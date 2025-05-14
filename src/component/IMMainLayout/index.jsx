@@ -12,6 +12,14 @@ const IMMainLayout = () => {
     navigate("/login");
   };
 
+  const handleBankMapping = () => {
+    navigate("/bank-mapping");
+  };
+
+  const handleUpload = () => {
+    navigate("/upload");
+  };
+
   return (
     <Layout>
       <Header
@@ -19,8 +27,29 @@ const IMMainLayout = () => {
           display: "flex",
           alignItems: "center",
           justifyContent: "flex-end",
+          gap: "16px", // Adds spacing between buttons
+          padding: "0 24px", // Ensures consistent padding
+          background: "#fff", // Matches Ant Design default header style
         }}
       >
+        <IMButton
+          className={"bank-mapping-btn"}
+          variant={"solid"}
+          color={"blue"}
+          size="large"
+          handleClick={handleBankMapping}
+        >
+          Bank Mapping
+        </IMButton>
+        <IMButton
+          className={"upload-btn"}
+          variant={"solid"}
+          color={"green"}
+          size="large"
+          handleClick={handleUpload}
+        >
+          Upload
+        </IMButton>
         <IMButton
           className={"logout-btn"}
           variant={"solid"}
