@@ -1,0 +1,40 @@
+.ant-table-wrapper.IMTable
+  .ant-pagination
+  .ant-pagination-item.ant-pagination-item-active {
+  background-color: var(--clr-orange);
+  border-color: var(--clr-orange);
+  color: var(--clr-white);
+}
+
+.ant-table-wrapper.IMTable .ant-pagination .ant-pagination-item {
+  background-color: #dbdade;
+  box-shadow: 0 0.125rem 0.25rem #0f142266;
+  color: var(--clr-darkblue);
+}
+
+.ant-table-wrapper.IMTable
+  .ant-pagination
+  .ant-pagination-item:not(.ant-pagination-item-active):hover {
+  background-color: #e6e5ea;
+}
+
+.IMTable.ant-table-wrapper .ant-table {
+  scrollbar-color: unset;
+}
+
+.ant-table-wrapper.IMTable .ant-pagination .ant-pagination-item-active a {
+  color: var(--clr-white);
+}
+
+.ant-table-wrapper.IMTable
+  .ant-pagination
+  .ant-pagination-jump-next
+  .ant-pagination-item-container
+  .ant-pagination-item-link-icon,
+.ant-table-wrapper.IMTable
+  .ant-pagination
+  .ant-pagination-jump-prev
+  .ant-pagination-item-container
+  .ant-pagination-item-link-icon {
+  color: var(--clr-orange);
+}

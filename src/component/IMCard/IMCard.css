@@ -1,0 +1,27 @@
+.IMCard.ant-card {
+  border: transparent;
+  background-color: var(--clr-white);
+  box-shadow: #6363631a 0 2px 8px;
+  transition: var(--transition-all);
+  height: 100%;
+}
+
+.IMCard.ant-card .ant-card-head {
+  border-bottom: none;
+  height: auto;
+  padding: 18px 18px 0 18px;
+}
+
+.IMCard.ant-card .ant-card-body {
+  padding: 18px 18px 18px 18px;
+}
+
+.IMCard.ant-card .ant-card-head-title {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 1px;
+}
+
+.IMCard.ant-card:not(.ant-card-bordered) {
+  box-shadow: #6363631a 0 2px 8px;
+}

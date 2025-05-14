@@ -1,0 +1,66 @@
+.IMDatePicker.ant-picker-outlined {
+  padding: 6px 12px;
+  background: transparent;
+  border-color: var(--clr-gray);
+  color: var(--clr-darkblue);
+  border-radius: 6px;
+  min-height: 45px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.IMDatePicker.ant-picker-outlined:focus,
+.IMDatePicker.ant-picker-outlined:focus-within,
+.IMDatePicker.ant-picker-outlined:hover {
+  border-color: var(--clr-orange);
+  box-shadow: unset;
+}
+
+.IMDatePickerCalender.ant-picker-dropdown
+  .ant-picker-cell-in-view.ant-picker-cell-selected:not(
+    .ant-picker-cell-disabled
+  )
+  .ant-picker-cell-inner {
+  background: var(--clr-orange);
+}
+
+.IMDatePickerCalender.ant-picker-dropdown
+  .ant-picker-cell-in-view.ant-picker-cell-today
+  .ant-picker-cell-inner::before {
+  border-color: var(--clr-orange);
+}
+.IMDatePickerCalender.ant-picker-dropdown
+  .ant-picker-cell-in-view.ant-picker-cell-range-end:not(
+    .ant-picker-cell-disabled
+  )
+  .ant-picker-cell-inner {
+  background: var(--clr-orange);
+}
+
+.IMDatePickerCalender.ant-picker-dropdown
+  .ant-picker-cell-in-view.ant-picker-cell-range-start:not(
+    .ant-picker-cell-disabled
+  )
+  .ant-picker-cell-inner {
+  background: var(--clr-orange);
+}
+
+.IMDatePickerCalender.ant-picker-dropdown
+  .ant-picker-cell-in-view.ant-picker-cell-in-range:not(
+    .ant-picker-cell-disabled
+  ):before,
+.IMDatePickerCalender.ant-picker-dropdown
+  .ant-picker-cell-in-view.ant-picker-cell-range-start:not(
+    .ant-picker-cell-disabled
+  ):before,
+.IMDatePickerCalender.ant-picker-dropdown
+  .ant-picker-cell-in-view.ant-picker-cell-range-end:not(
+    .ant-picker-cell-disabled
+  ):before {
+  background: #ff76405e;
+}
+
+.IMDatePicker.ant-picker.ant-picker-range .ant-picker-active-bar {
+  background: var(--clr-green);
+}

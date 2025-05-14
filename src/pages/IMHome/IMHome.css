@@ -1,0 +1,28 @@
+select {
+  width: 100%;
+  height: 180px;
+}
+
+.ant-select.calc-select {
+  width: 100%;
+}
+
+.calculation-type-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mapping-popver {
+  margin-bottom: 12px;
+  display: inline-block;
+}
+
+.calculated-col-extra-wrap {
+  display: flex;
+  gap: 12px;
+}
+
+.selectLabel {
+  font-size: 12px;
+}

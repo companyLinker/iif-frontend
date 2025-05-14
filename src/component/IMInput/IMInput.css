@@ -1,0 +1,18 @@
+.IMInput.ant-input-outlined:hover {
+  border-color: var(--clr-orange);
+  box-shadow: none;
+}
+
+.IMInput.ant-input-outlined:focus,
+.IMInput.ant-input-outlined:focus-within {
+  border-color: var(--clr-orange);
+  box-shadow: none;
+}
+
+.IMInput.ant-input-outlined {
+  min-height: 40px;
+  padding: 4px 10px;
+  font-size: 14px;
+  border-color: var(--clr-gray);
+  transition: all 0.2s;
+}
