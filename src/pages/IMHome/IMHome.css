@@ -26,3 +26,28 @@ select {
 .selectLabel {
   font-size: 12px;
 }
+
+.border-red-500 {
+  border-color: #ef4444;
+}
+.border-green-500 {
+  border-color: #10b981;
+}
+.bg-red-100 {
+  background-color: #fef2f2;
+}
+.bg-green-100 {
+  background-color: #d1fae5;
+}
+.border-red-400 {
+  border-color: #f87171;
+}
+.border-green-400 {
+  border-color: #34d399;
+}
+.text-red-700 {
+  color: #b91c1c;
+}
+.text-green-700 {
+  color: #047857;
+}

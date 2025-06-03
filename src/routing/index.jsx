@@ -23,7 +23,7 @@ export const router = createBrowserRouter([
         element: <IMHome />,
       },
       {
-        path: "/upload",
+        path: "/dcr",
         element: <IMUpload />,
       },
       {

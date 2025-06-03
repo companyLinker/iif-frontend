@@ -5,8 +5,8 @@ import { Col, Input, Row, Select } from "antd";
 import { IMButton } from "../../component/IMButton";
 import { IMCard } from "../../component/IMCard";
 import { IMTable } from "../../component/IMTable";
-import "./IMBankMapping.css";
 import { IMInput } from "../../component/IMInput";
+import "./IMBankMapping.css";
 
 const IMBankMapping = () => {
   const [file, setFile] = useState(null);
@@ -25,10 +25,9 @@ const IMBankMapping = () => {
   const [selectedBrand, setSelectedBrand] = useState([]);
   const [loading, setLoading] = useState(false); // Track fetch loading state
 
-  const ADMIN_PASSWORD = "admin123"; // Replace with a secure password or env variable
+  const ADMIN_PASSWORD = `${import.meta.env.VITE_DB_UPDATE_PSSWRD}`; // Replace with a secure password or env variable
 
   const handleFileChange = (event) => {
-    console.log("File selected:", event.target.files[0]);
     setFile(event.target.files[0]);
   };
 
@@ -52,7 +51,6 @@ const IMBankMapping = () => {
       )
       .then((response) => {
         if (response.status === 200) {
-          console.log("Upload successful:", response.data);
           setUploading(false);
           if (
             response.data.message === "Bank mapping data uploaded successfully"
@@ -76,7 +74,6 @@ const IMBankMapping = () => {
   const generateColumns = useMemo(() => {
     return (data) => {
       if (!data || data.length === 0) {
-        console.log("No data to generate columns from");
         return [];
       }
 
@@ -188,23 +185,9 @@ const IMBankMapping = () => {
                     originalIndex !== -1 &&
                     originalData[originalIndex]?._id
                   ) {
-                    console.log(
-                      "Edit clicked for index:",
-                      originalIndex,
-                      "Record:",
-                      originalData[originalIndex]
-                    );
                     setEditRow(originalIndex);
                     setEditForm({ ...originalData[originalIndex] });
                   } else {
-                    console.log(
-                      "Invalid edit attempt:",
-                      index,
-                      "Record:",
-                      record,
-                      "Original data:",
-                      originalData
-                    );
                     alert(
                       "Invalid record selected for editing. Please ensure data contains valid IDs."
                     );
@@ -234,7 +217,6 @@ const IMBankMapping = () => {
         ...item,
         _id: item._id ? item._id.toString() : null, // Safe conversion with fallback
       }));
-      console.log("Fetched bank mapping data:", fetchedData);
       setOriginalData(fetchedData);
       const dataWithoutId = fetchedData.map(({ _id, ...rest }) => rest);
       setData(dataWithoutId);
@@ -265,7 +247,6 @@ const IMBankMapping = () => {
         ...item,
         _id: item._id ? item._id.toString() : null, // Safe conversion with fallback
       }));
-      console.log("Filtered bank mapping data:", fetchedData);
       setOriginalData(fetchedData);
       const dataWithoutId = fetchedData.map(({ _id, ...rest }) => rest);
       setData(dataWithoutId);
@@ -322,7 +303,7 @@ const IMBankMapping = () => {
     const idsToDelete = selectedRowKeys
       .map((index) => originalData[index]?._id)
       .filter((id) => id && id !== "null"); // Exclude null or "null" strings
-    console.log("IDs to delete:", idsToDelete);
+
     if (idsToDelete.length === 0) {
       alert("No valid IDs found for deletion. Ensure data contains valid IDs.");
       return;
@@ -333,7 +314,6 @@ const IMBankMapping = () => {
         ids: idsToDelete,
       })
       .then((response) => {
-        console.log("Delete response:", response.data);
         if (response.status === 200) {
           alert(
             `Selected data deleted successfully! Deleted ${response.data.deletedCount} records.`
@@ -355,31 +335,18 @@ const IMBankMapping = () => {
       return;
     }
 
-    console.log(
-      "Attempting to save edit. editRow:",
-      editRow,
-      "originalData[editRow]:",
-      originalData[editRow]
-    );
     if (
       editRow === null ||
       !originalData[editRow] ||
       !originalData[editRow]._id ||
       originalData[editRow]._id === "null"
     ) {
-      console.log(
-        "Save edit failed - Invalid ID. editRow:",
-        editRow,
-        "originalData:",
-        originalData
-      );
       alert("Invalid edit operation. No valid ID found.");
       return;
     }
 
     const idToUpdate = originalData[editRow]._id;
     const { _id, ...updates } = editForm;
-    console.log("ID to update:", idToUpdate, "Updates:", updates);
 
     axios
       .post(`${import.meta.env.VITE_API_URL}/api/bank-mapping-update`, {
@@ -413,12 +380,6 @@ const IMBankMapping = () => {
       } else {
         setFilteredData(extra.currentDataSource);
       }
-      console.log(
-        "Filtered data:",
-        extra.currentDataSource,
-        "Filters:",
-        filters
-      );
     }, 300),
     [data]
   );

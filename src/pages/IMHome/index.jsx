@@ -5,7 +5,16 @@ import React, {
   useMemo,
   useRef,
 } from "react";
-import { Col, Row, Select, Input, Radio, notification, Spin } from "antd";
+import {
+  Col,
+  Row,
+  Select,
+  Input,
+  Radio,
+  notification,
+  Spin,
+  Modal,
+} from "antd";
 import * as XLSX from "xlsx";
 import moment from "moment-timezone";
 import _ from "lodash";
@@ -19,7 +28,7 @@ import { IMPopover } from "../../component/IMPopover";
 import { IMDatePicker } from "../../component/IMDatePicker";
 import "./IMHome.css";
 
-// Function to generate mapped data
+// Function to generate mapped data (unchanged)
 const generateMappedData = (
   sourceData,
   sourceColumns,
@@ -55,7 +64,7 @@ const generateMappedData = (
         : [];
       mappedRow[iifColumn] = valueData.length
         ? keyValues.length
-          ? [...valueData, ...keyValues]
+          ? [...valueData, ...keyValues] // Fixed: Replaced keyKeys with keyValues
           : valueData
         : keyValues;
     });
@@ -242,7 +251,7 @@ const generateMappedData = (
   });
 };
 
-// Debounce utility
+// Debounce utility (unchanged)
 const debounce = (func, wait) => {
   let timeout;
   return (...args) => {
@@ -269,9 +278,9 @@ const IMHome = () => {
   const [calculatedColumnIsCustomString, setCalculatedColumnIsCustomString] =
     useState({});
   const [calculatedColumnNames, setCalculatedColumnNames] = useState([]);
+  const [emptyColumnNames, setEmptyColumnNames] = useState([]);
   const [coaMappings, setCoaMappings] = useState({});
   const [coaTargetIifColumn, setCoaTargetIifColumn] = useState(null);
-  const [bankMappings, setBankMappings] = useState({});
   const [bankTargetIifColumn, setBankTargetIifColumn] = useState(null);
   const [storeSplitIifColumn, setStoreSplitIifColumn] = useState(null);
   const [startDate, setStartDate] = useState(null);
@@ -281,7 +290,6 @@ const IMHome = () => {
   const [previewData, setPreviewData] = useState([]);
   const [memoMappings, setMemoMappings] = useState({});
   const [memoMappingType, setMemoMappingType] = useState("Keys");
-  // Filter states
   const [states, setStates] = useState([]);
   const [brands, setBrands] = useState([]);
   const [storeNames, setStoreNames] = useState([]);
@@ -290,14 +298,46 @@ const IMHome = () => {
   const [selectedStoreNames, setSelectedStoreNames] = useState([]);
   const [allData, setAllData] = useState([]);
   const [bmData, setBmData] = useState([]);
+  const [emptyColumnName, setEmptyColumnName] = useState("");
+  const [bankMappingLookup, setBankMappingLookup] = useState(new Map());
+  const [showOverwriteModal, setShowOverwriteModal] = useState(false);
+  const [pendingFormatData, setPendingFormatData] = useState(null);
+  const [existingFormatId, setExistingFormatId] = useState(null);
+  // Normalized column name mapping for localStorage
+  const [normalizedColumnMap, setNormalizedColumnMap] = useState({});
+
+  const [formats, setFormats] = useState([]);
+  const [selectedFormat, setSelectedFormat] = useState(null);
+  const [formatName, setFormatName] = useState("");
+  const [isFormatModified, setIsFormatModified] = useState(false);
+  const [calculatedColumnDefinitions, setCalculatedColumnDefinitions] =
+    useState([]);
+
+  // Retrieve user role from localStorage
+  const isAdmin = localStorage.getItem("userRole") === "admin";
+
+  const extractNumber = useCallback((str) => {
+    if (!str || typeof str !== "string") return "";
+    const match = str.match(/(?:#|No\.?)?\s*(\d+)/i);
+    return match ? match[1] : "";
+  }, []);
+
+  const normalizeString = useCallback((str) => {
+    if (!str || typeof str !== "string") return "";
+    return str
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }, []);
+
   const normalizeStoreName = useCallback((name) => {
     if (!name || typeof name !== "string") return "";
     return name
       .toLowerCase()
       .trim()
-      .replace(/[^a-z0-9]/g, "")
-      .replace(/\s+/g, "")
-      .trim();
+      .replace(/[^a-z0-9\s]/g, "")
+      .replace(/\s+/g, " ");
   }, []);
 
   const normalizeColumnName = useCallback((name) => {
@@ -308,6 +348,146 @@ const IMHome = () => {
       .replace(/\s+/g, "")
       .replace(/[^a-z0-9]/g, "");
   }, []);
+
+  // Memoized normalized column lookup
+  const normalizedColumnLookup = useMemo(() => {
+    const lookup = new Map();
+    sourceColumns.forEach((col) => {
+      const normalized = normalizeColumnName(col);
+      lookup.set(normalized, col);
+    });
+    calculatedColumnNames.forEach((col) => {
+      const normalized = normalizeColumnName(col);
+      lookup.set(normalized, col);
+    });
+    emptyColumnNames.forEach((col) => {
+      const normalized = normalizeColumnName(col);
+      lookup.set(normalized, col);
+    });
+    return lookup;
+  }, [
+    sourceColumns,
+    calculatedColumnNames,
+    emptyColumnNames,
+    normalizeColumnName,
+  ]);
+
+  const matchedStoreNames = useMemo(() => {
+    if (
+      !allData.length ||
+      !bmData.length ||
+      !sourceColumns.includes("StoreName")
+    ) {
+      return [];
+    }
+
+    const ctStoreNames = new Map();
+    const ctStoreNumbers = new Map();
+    allData.forEach((row) => {
+      const storeName = row[sourceColumns.indexOf("StoreName")];
+      if (storeName && typeof storeName === "string") {
+        const normalizedName = normalizeString(storeName);
+        const number = extractNumber(storeName);
+        if (normalizedName) {
+          ctStoreNames.set(normalizedName, storeName);
+        }
+        if (number) {
+          ctStoreNumbers.set(number, storeName);
+        }
+      }
+    });
+
+    const matchedStores = new Set();
+    bmData.forEach((bm) => {
+      if (!bm.POS_COMPANY_NAME || typeof bm.POS_COMPANY_NAME !== "string")
+        return;
+
+      const normalizedPosName = normalizeString(bm.POS_COMPANY_NAME);
+      const posNumber = extractNumber(bm.POS_COMPANY_NAME);
+
+      if (ctStoreNames.has(normalizedPosName)) {
+        matchedStores.add(bm.POS_COMPANY_NAME);
+        return;
+      }
+
+      if (posNumber && ctStoreNumbers.has(posNumber)) {
+        matchedStores.add(bm.POS_COMPANY_NAME);
+        return;
+      }
+
+      const posWords = normalizedPosName.split(" ").filter(Boolean);
+      for (const [ctNormalized, ctOriginal] of ctStoreNames) {
+        const ctWords = ctNormalized.split(" ").filter(Boolean);
+        const commonWords = posWords.filter((word) => ctWords.includes(word));
+        const lengthRatio =
+          Math.min(posWords.length, ctWords.length) /
+          Math.max(posWords.length, ctWords.length);
+        if (commonWords.length > 0 && lengthRatio > 0.7) {
+          matchedStores.add(bm.POS_COMPANY_NAME);
+          break;
+        }
+      }
+    });
+
+    return [...matchedStores].sort();
+  }, [allData, bmData, sourceColumns, normalizeString, extractNumber]);
+
+  const filteredStates = useMemo(() => {
+    if (!bmData.length) return states;
+    if (!selectedStoreNames.length && !selectedBrands.length) return states;
+
+    const validStates = new Set();
+    bmData.forEach((bm) => {
+      const storeMatch =
+        selectedStoreNames.length === 0 ||
+        selectedStoreNames.includes(bm.POS_COMPANY_NAME);
+      const brandMatch =
+        selectedBrands.length === 0 || selectedBrands.includes(bm.BRAND);
+      if (storeMatch && brandMatch && bm.State) {
+        validStates.add(bm.State);
+      }
+    });
+
+    return states.filter((state) => validStates.has(state)).sort();
+  }, [bmData, states, selectedStoreNames, selectedBrands]);
+
+  const filteredBrands = useMemo(() => {
+    if (!bmData.length) return brands;
+    if (!selectedStoreNames.length && !selectedStates.length) return brands;
+
+    const validBrands = new Set();
+    bmData.forEach((bm) => {
+      const storeMatch =
+        selectedStoreNames.length === 0 ||
+        selectedStoreNames.includes(bm.POS_COMPANY_NAME);
+      const stateMatch =
+        selectedStates.length === 0 || selectedStates.includes(bm.State);
+      if (storeMatch && stateMatch && bm.BRAND) {
+        validBrands.add(bm.BRAND);
+      }
+    });
+
+    return brands.filter((brand) => validBrands.has(brand)).sort();
+  }, [bmData, brands, selectedStoreNames, selectedStates]);
+
+  const filteredStoreNames = useMemo(() => {
+    if (!bmData.length) return matchedStoreNames;
+    if (!selectedStates.length && !selectedBrands.length)
+      return matchedStoreNames;
+
+    const validStores = new Set();
+    bmData.forEach((bm) => {
+      const stateMatch =
+        selectedStates.length === 0 || selectedStates.includes(bm.State);
+      const brandMatch =
+        selectedBrands.length === 0 || selectedBrands.includes(bm.BRAND);
+      if (stateMatch && brandMatch && bm.POS_COMPANY_NAME) {
+        validStores.add(bm.POS_COMPANY_NAME);
+      }
+    });
+
+    return matchedStoreNames.filter((store) => validStores.has(store)).sort();
+  }, [bmData, matchedStoreNames, selectedStates, selectedBrands]);
 
   const getPositionMappedData = useCallback(
     (mappingColumn, column, position) => {
@@ -403,6 +583,40 @@ const IMHome = () => {
     debouncedSetPositionMappings((prev) => ({ ...prev, [column]: position }));
   }, []);
 
+  const fetchFilterOptions = useCallback(async () => {
+    try {
+      const response = await axios.get(
+        `${import.meta.env.VITE_API_URL}/api/filter-options`
+      );
+      const {
+        states = [],
+        brands = [],
+        storeMappings = [],
+      } = response.data || {};
+      if (!states || !brands || !storeMappings) {
+        throw new Error("Invalid response format: Missing required fields");
+      }
+      setStates(states.sort());
+      setBrands(brands.sort());
+      setBmData(storeMappings);
+
+      // Create bank mapping lookup map
+      const lookup = new Map();
+      storeMappings.forEach((bm) => {
+        if (bm.POS_COMPANY_NAME && (bm.mapped_col_name || bm.mappedColName)) {
+          const normalizedKey = normalizeStoreName(bm.POS_COMPANY_NAME);
+          lookup.set(normalizedKey, bm.mapped_col_name || bm.mappedColName);
+        }
+      });
+      setBankMappingLookup(lookup);
+    } catch (error) {
+      notificationApi.error({
+        message: "Error",
+        description: `Failed to fetch filter options: ${error.message}`,
+      });
+    }
+  }, [notificationApi, normalizeStoreName]);
+
   const parseSourceFile = useCallback(
     (file) => {
       const reader = new FileReader();
@@ -413,7 +627,12 @@ const IMHome = () => {
           { header: 1 }
         );
         const headers = data[0] || [];
-        const normalizedHeaders = headers.map(normalizeColumnName);
+        const newNormalizedColumnMap = {};
+        headers.forEach((header) => {
+          const normalized = normalizeColumnName(header);
+          newNormalizedColumnMap[normalized] = header;
+        });
+        setNormalizedColumnMap(newNormalizedColumnMap); // Set directly, no merge
         setSourceColumns(headers);
         setSourceData(data.slice(1) || []);
         setAllData([]);
@@ -424,10 +643,12 @@ const IMHome = () => {
         setSelectedStates([]);
         setSelectedBrands([]);
         setSelectedStoreNames([]);
+        setBankMappingLookup(new Map());
+        fetchFilterOptions();
       };
       reader.readAsBinaryString(file);
     },
-    [normalizeColumnName]
+    [normalizeColumnName, fetchFilterOptions]
   );
 
   const parseIIFTemplate = useCallback((file) => {
@@ -474,33 +695,6 @@ const IMHome = () => {
           }
         });
         setCoaMappings(mappings);
-      };
-      reader.readAsBinaryString(file);
-    },
-    [normalizeStoreName]
-  );
-
-  const parseBankMappingFile = useCallback(
-    (file) => {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const text = event.target.result;
-        const workbook = XLSX.read(text, { type: "binary" });
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const data = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-
-        const mappings = {};
-        data.slice(1).forEach((row) => {
-          const storeName = row[0]?.trim();
-          const mappedName = row[1]?.trim();
-          if (storeName && mappedName) {
-            const normalizedStoreName = normalizeStoreName(storeName);
-            if (normalizedStoreName) {
-              mappings[normalizedStoreName] = mappedName;
-            }
-          }
-        });
-        setBankMappings(mappings);
       };
       reader.readAsBinaryString(file);
     },
@@ -575,35 +769,96 @@ const IMHome = () => {
     setEndDate(dates[1]);
   }, []);
 
-  const handleStateChange = useCallback((value) => {
-    setSelectedStates(value);
-  }, []);
+  const handleStateChange = useCallback(
+    (value) => {
+      setSelectedStates(value);
+      if (value.length) {
+        const validBrands = new Set(
+          bmData
+            .filter((bm) => value.includes(bm.State))
+            .map((bm) => bm.BRAND)
+            .filter(Boolean)
+        );
+        setSelectedBrands((prev) =>
+          prev.filter((brand) => validBrands.has(brand))
+        );
 
-  const handleBrandChange = useCallback((value) => {
-    setSelectedBrands(value);
-  }, []);
+        const validStores = new Set(
+          bmData
+            .filter((bm) => value.includes(bm.State))
+            .map((bm) => bm.POS_COMPANY_NAME)
+            .filter(Boolean)
+        );
+        setSelectedStoreNames((prev) =>
+          prev.filter((store) => validStores.has(store))
+        );
+      } else {
+        if (!selectedStoreNames.length) {
+          setSelectedBrands([]);
+          setSelectedStoreNames([]);
+        }
+      }
+    },
+    [bmData, selectedStoreNames]
+  );
 
-  const handleStoreNameChange = useCallback((value) => {
-    setSelectedStoreNames(value);
-  }, []);
+  const handleBrandChange = useCallback(
+    (value) => {
+      setSelectedBrands(value);
+      if (value.length) {
+        const validStores = new Set(
+          bmData
+            .filter((bm) => value.includes(bm.BRAND))
+            .map((bm) => bm.POS_COMPANY_NAME)
+            .filter(Boolean)
+        );
+        setSelectedStoreNames((prev) =>
+          prev.filter((store) => validStores.has(store))
+        );
+      } else {
+        if (!selectedStates.length && !selectedStoreNames.length) {
+          setSelectedStoreNames([]);
+        }
+      }
+    },
+    [bmData, selectedStates, selectedStoreNames]
+  );
 
-  const fetchFilterOptions = useCallback(async () => {
-    try {
-      const response = await axios.get(
-        `${import.meta.env.VITE_API_URL}/api/filter-options`
-      );
-      const { states, brands, storeMappings } = response.data;
-      setStates(states.sort());
-      setBrands(brands.sort());
-      setStoreNames(storeMappings.map((m) => m.POS_COMPANY_NAME).sort());
-      setBmData(storeMappings);
-    } catch (error) {
-      notificationApi.error({
-        message: "Error",
-        description: "Failed to fetch filter options.",
-      });
-    }
-  }, [notificationApi]);
+  const handleStoreNameChange = useCallback(
+    (value) => {
+      setSelectedStoreNames(value);
+      if (value.length) {
+        const validStates = new Set(
+          bmData
+            .filter((bm) => value.includes(bm.POS_COMPANY_NAME))
+            .map((bm) => bm.State)
+            .filter(Boolean)
+        );
+        setSelectedStates((prev) =>
+          prev.filter((state) => validStates.has(state))
+        );
+
+        const validBrands = new Set(
+          bmData
+            .filter((bm) => value.includes(bm.POS_COMPANY_NAME))
+            .map((bm) => bm.BRAND)
+            .filter(Boolean)
+        );
+        setSelectedBrands((prev) =>
+          prev.filter((brand) => validBrands.has(brand))
+        );
+      } else {
+        if (!selectedStates.length) {
+          setSelectedBrands([]);
+        }
+      }
+    },
+    [bmData, selectedStates]
+  );
+
+  const handleEmptyColumnNameChange = useCallback((e) => {
+    setEmptyColumnName(e.target.value);
+  }, []);
 
   const handleFetchData = useCallback(() => {
     if (!startDate || !endDate) {
@@ -636,6 +891,15 @@ const IMHome = () => {
           const dataArray = dataWithoutId.map((item) =>
             headers.map((header) => item[header])
           );
+          const newNormalizedColumnMap = {};
+          headers.forEach((header) => {
+            const normalized = normalizeColumnName(header);
+            newNormalizedColumnMap[normalized] = header;
+          });
+          setNormalizedColumnMap((prev) => ({
+            ...prev,
+            ...newNormalizedColumnMap,
+          }));
           setAllData(dataArray);
           setSourceColumns(headers);
           setSourceData(dataArray);
@@ -659,6 +923,7 @@ const IMHome = () => {
           setSelectedStates([]);
           setSelectedBrands([]);
           setSelectedStoreNames([]);
+          setBankMappingLookup(new Map());
         }
       })
       .catch((error) => {
@@ -725,12 +990,20 @@ const IMHome = () => {
     });
   }, [valueMappings]);
 
-  const newlyCreatedColumns = useMemo(() => {
+  const calculatedMappedColumns = useMemo(() => {
     return Object.keys(valueMappings).filter((column) => {
       const columns = valueMappings[column];
       return columns.some((col) => calculatedColumnNames.includes(col));
     });
   }, [valueMappings, calculatedColumnNames]);
+
+  const emptyMappedColumns = useMemo(() => {
+    return Object.keys(valueMappings).filter((column) => {
+      const columns = valueMappings[column];
+      return columns.some((col) => emptyColumnNames.includes(col));
+    });
+  }, [valueMappings, emptyColumnNames]);
+
   const addCalculatedColumn = useCallback(() => {
     if (!calculatedColumn) {
       notificationApi.error({
@@ -740,406 +1013,1055 @@ const IMHome = () => {
       return;
     }
 
-    if (calculatedColumnNames.includes(calculatedColumn)) {
+    const normalizedCalculatedColumn = normalizeColumnName(calculatedColumn);
+    const existingColumn = normalizedColumnLookup.get(
+      normalizedCalculatedColumn
+    );
+
+    if (existingColumn && existingColumn !== calculatedColumn) {
       notificationApi.error({
         message: "Error",
-        description:
-          "Duplicate calculated column name. Please use a unique name.",
+        description: `Column name "${calculatedColumn}" conflicts with existing column "${existingColumn}". Please use a unique name.`,
       });
       return;
     }
 
-    if (!calculatedColumnsFormula) {
+    if (!selectedColumns.length && !calculatedColumnsFormula) {
       notificationApi.error({
         message: "Error",
-        description: "Please provide a formula for the calculated column.",
+        description: "Please select at least one column or provide a formula.",
       });
       return;
     }
-
-    const formula = calculatedColumnsFormula;
-    const normalizedSourceColumns = sourceColumns.map((col) =>
-      col.trim().toLowerCase()
-    );
-    const columns = formula
-      .split(/([-+*/()])/)
-      .map((part) => part.trim())
-      .filter((part) => part && !/[-+*/()]/.test(part))
-      .map((col) => col.toLowerCase());
-
-    const isCustomString = !columns.some((col) =>
-      normalizedSourceColumns.includes(col)
-    );
 
     let newData;
-    if (isCustomString) {
-      newData = sourceData.map(() => formula);
-    } else {
-      newData = sourceData.map((row, rowIndex) => {
-        try {
-          let formulaCopy = formula.toLowerCase();
-          let isValid = true;
+    let isCustomString = false;
 
-          columns.forEach((col) => {
-            const colIndex = normalizedSourceColumns.indexOf(col);
-            if (colIndex === -1) {
+    if (selectedColumns.length === 1 && !calculatedColumnsFormula) {
+      const colIndex = sourceColumns.indexOf(selectedColumns[0]);
+      if (colIndex === -1) {
+        notificationApi.error({
+          message: "Error",
+          description: `Column "${selectedColumns[0]}" not found in source data.`,
+        });
+        return;
+      }
+      newData = sourceData.map((row) => row[colIndex] ?? "");
+      isCustomString = true;
+    } else {
+      const formula = calculatedColumnsFormula || selectedColumns.join(" ");
+      const normalizedSourceColumns = sourceColumns.map((col) =>
+        col.trim().toLowerCase()
+      );
+      const columns = formula
+        .split(/([-+*/()])/)
+        .map((part) => part.trim())
+        .filter((part) => part && !/[-+*/()]/.test(part))
+        .map((col) => col.toLowerCase());
+
+      isCustomString = !columns.some((col) =>
+        normalizedSourceColumns.includes(col)
+      );
+
+      if (isCustomString) {
+        if (!formula) {
+          notificationApi.error({
+            message: "Error",
+            description: "Please provide a formula for the calculated column.",
+          });
+          return;
+        }
+        newData = sourceData.map(() => formula);
+      } else {
+        newData = sourceData.map((row, rowIndex) => {
+          try {
+            let formulaCopy = formula.toLowerCase();
+            let isValid = true;
+
+            columns.forEach((col) => {
+              const colIndex = normalizedSourceColumns.indexOf(col);
+              if (colIndex === -1) {
+                throw new Error(
+                  `Column "${col}" not found in source data at row ${rowIndex}`
+                );
+              }
+              let value = row[colIndex];
+
+              if (value === null || value === undefined || value === "") {
+                value = 0;
+              } else if (typeof value === "string") {
+                const cleanedValue = value.replace(/[^0-9.-]/g, "");
+                const parsedValue = parseFloat(cleanedValue);
+                if (
+                  isNaN(parsedValue) ||
+                  !cleanedValue.match(/^-?\d*\.?\d*$/)
+                ) {
+                  value = 0;
+                  isValid = false;
+                } else {
+                  value = parsedValue;
+                }
+              }
+
+              const escapedCol = col.replace(/[.*+?^${}()|[\]\\#]/g, "\\$&");
+              formulaCopy = formulaCopy.replace(
+                new RegExp(escapedCol, "g"),
+                value
+              );
+            });
+
+            if (!isValid || !formulaCopy.match(/^[0-9+\-*/().\s]+$/)) {
               throw new Error(
-                `Column "${col}" not found in source data at row ${rowIndex}`
+                `Invalid formula syntax: "${formulaCopy}" at row ${rowIndex}`
               );
             }
-            let value = row[colIndex];
 
-            if (value === null || value === undefined || value === "") {
-              value = 0;
-            } else if (typeof value === "string") {
-              const cleanedValue = value.replace(/[^0-9.-]/g, "");
-              const parsedValue = parseFloat(cleanedValue);
-              if (isNaN(parsedValue) || !cleanedValue.match(/^-?\d*\.?\d*$/)) {
-                value = 0;
-                isValid = false;
-              } else {
-                value = parsedValue;
-              }
+            const result =
+              calculationType === "Answer" ? eval(formulaCopy) : formulaCopy;
+
+            if (
+              calculationType === "Answer" &&
+              (isNaN(result) || !isFinite(result))
+            ) {
+              throw new Error(
+                `Formula evaluation resulted in invalid number: "${result}" at row ${rowIndex}`
+              );
             }
 
-            const escapedCol = col.replace(/[.*+?^${}()|[\]\\#]/g, "\\$&");
-            formulaCopy = formulaCopy.replace(
-              new RegExp(escapedCol, "g"),
-              value
-            );
-          });
-
-          if (!isValid || !formulaCopy.match(/^[0-9+\-*/().\s]+$/)) {
-            throw new Error(
-              `Invalid formula syntax: "${formulaCopy}" at row ${rowIndex}`
-            );
+            return result;
+          } catch (error) {
+            notificationApi.warning({
+              message: "Warning",
+              description: `Error calculating value for row ${rowIndex + 1}: ${
+                error.message
+              }. Using 0.`,
+            });
+            return 0;
           }
-
-          const result =
-            calculationType === "Answer" ? eval(formulaCopy) : formulaCopy;
-
-          if (
-            calculationType === "Answer" &&
-            (isNaN(result) || !isFinite(result))
-          ) {
-            throw new Error(
-              `Formula evaluation resulted in invalid number: "${result}" at row ${rowIndex}`
-            );
-          }
-
-          return result;
-        } catch (error) {
-          notificationApi.warning({
-            message: "Warning",
-            description: `Error calculating value for row ${rowIndex + 1}: ${
-              error.message
-            }. Using 0.`,
-          });
-          return 0;
-        }
-      });
+        });
+      }
     }
 
-    const newSourceColumns = [...sourceColumns, calculatedColumn];
-    const newSourceData = sourceData.map((row, index) => {
-      const newRow = [...row, newData[index]];
-      return newRow;
-    });
+    // Update normalized column map
+    setNormalizedColumnMap((prev) => ({
+      ...prev,
+      [normalizedCalculatedColumn]: calculatedColumn,
+    }));
 
-    const updatedValueMappings = { ...valueMappings };
-    Object.keys(updatedValueMappings).forEach((iifColumn) => {
-      if (updatedValueMappings[iifColumn].includes(calculatedColumn)) {
-        const targetIndex = newSourceColumns.indexOf(iifColumn);
-        if (targetIndex !== -1) {
-          newSourceData.forEach((row, rowIndex) => {
-            row[targetIndex] = newData[rowIndex];
-          });
-        }
-      }
-    });
+    // Add to calculatedColumnNames if not in sourceColumns
+    if (!sourceColumns.includes(calculatedColumn)) {
+      setCalculatedColumnNames((prev) =>
+        prev.includes(calculatedColumn) ? prev : [...prev, calculatedColumn]
+      );
+    }
+
+    const newSourceColumns = sourceColumns.includes(calculatedColumn)
+      ? sourceColumns
+      : [...sourceColumns, calculatedColumn];
+    const newSourceData = sourceData.map((row, index) => [
+      ...row,
+      newData[index],
+    ]);
 
     setCalculatedColumnTypes((prev) => ({
       ...prev,
-      [calculatedColumn]: calculationType,
+      [calculatedColumn]: isCustomString ? "Formula" : calculationType,
     }));
     setCalculatedColumnIsCustomString((prev) => ({
       ...prev,
       [calculatedColumn]: isCustomString,
     }));
-    setCalculatedColumnNames((prev) => [...prev, calculatedColumn]);
     setSourceColumns(newSourceColumns);
     setSourceData(newSourceData);
-    setValueMappings(updatedValueMappings);
+
+    // Save calculated column definition with selectedColumns
+    setCalculatedColumnDefinitions((prev) => [
+      ...prev,
+      {
+        name: calculatedColumn,
+        formula: calculatedColumnsFormula || selectedColumns.join(" "),
+        selectedColumns: [...selectedColumns], // Include selected columns
+        calculationType: isCustomString ? "Formula" : calculationType,
+      },
+    ]);
+
+    setCalculatedColumn("");
+    setCalculatedColumnsFormula("");
+    setSelectedColumns([]);
     notificationApi.success({
       message: "Success",
       description: "Calculated column added successfully.",
     });
   }, [
-    calculatedColumnNames,
     calculatedColumn,
     calculatedColumnsFormula,
     calculationType,
     sourceColumns,
     sourceData,
-    valueMappings,
     selectedColumns,
     notificationApi,
+    normalizeColumnName,
+    normalizedColumnLookup,
+    calculatedColumnNames,
   ]);
 
-  const downloadMappedData = useCallback(async () => {
-    if (!sourceData.length || !Object.keys(keyMappings).length) return;
-
-    setDownloading(true);
-
-    const chunkSize = 1000;
-    let allMappedData = [];
-
-    for (let i = 0; i < sourceData.length; i += chunkSize) {
-      const chunk = sourceData.slice(i, i + chunkSize);
-      const mappedChunk = generateMappedData(
-        chunk,
-        sourceColumns,
-        iifColumns,
-        keyMappings,
-        valueMappings,
-        nonZeroColumns,
-        positionMappings,
-        calculatedColumnNames,
-        calculatedColumnTypes,
-        calculatedColumnIsCustomString
-      );
-      mappedChunk.forEach((rowGroup, chunkIndex) => {
-        const originalIndex = i + chunkIndex;
-        rowGroup.forEach((row) => {
-          row.sourceRowIndex = originalIndex;
-        });
-      });
-      allMappedData = allMappedData.concat(mappedChunk);
-    }
-
-    const flattenedData = allMappedData.flat();
-    const filledData = fillMissingDates(flattenedData);
-    const convertedData = convertDates(filledData);
-
-    const storeSplitSourceColumn = valueMappings[storeSplitIifColumn]?.[0];
-    if (!storeSplitSourceColumn) {
+  const addEmptyColumn = useCallback(() => {
+    if (!emptyColumnName) {
       notificationApi.error({
         message: "Error",
-        description: `No source column mapped to ${storeSplitIifColumn}. Cannot split by store.`,
+        description: "Please provide a name for the empty column.",
       });
-      setDownloading(false);
       return;
     }
 
-    const groupedByStore = {};
-    allMappedData.forEach((rowGroup, rowIndex) => {
-      const sourceRow = sourceData[rowIndex];
-      const storeName =
-        sourceRow[sourceColumns.indexOf(storeSplitSourceColumn)];
+    const normalizedEmptyColumn = normalizeColumnName(emptyColumnName);
+    const existingColumn = normalizedColumnLookup.get(normalizedEmptyColumn);
 
-      if (!storeName) return;
+    if (existingColumn && existingColumn !== emptyColumnName) {
+      notificationApi.error({
+        message: "Error",
+        description: `Column name "${emptyColumnName}" conflicts with existing column "${existingColumn}". Please use a unique name.`,
+      });
+      return;
+    }
 
-      groupedByStore[storeName] = groupedByStore[storeName] || [];
-      const filledRowGroup = fillMissingDates(rowGroup);
-      const convertedRowGroup = convertDates(filledRowGroup);
-      groupedByStore[storeName].push(convertedRowGroup);
+    const newSourceColumns = [...sourceColumns, emptyColumnName];
+    const newSourceData = sourceData.map((row) => [...row, ""]);
+    setNormalizedColumnMap({
+      [normalizedEmptyColumn]: emptyColumnName,
     });
+    setSourceColumns(newSourceColumns);
+    setSourceData(newSourceData);
+    setEmptyColumnNames((prev) => [...prev, emptyColumnName]);
+    setEmptyColumnName("");
+    notificationApi.success({
+      message: "Success",
+      description: "Empty column added successfully.",
+    });
+  }, [
+    emptyColumnName,
+    sourceColumns,
+    sourceData,
+    notificationApi,
+    normalizeColumnName,
+    normalizedColumnLookup,
+  ]);
 
-    const zip = new JSZip();
-    const totalColumns = iifHeaderRows[0].length;
+  // Fetch formats from database
+  const fetchFormats = useCallback(async () => {
+    try {
+      const response = await axios.get(
+        `${import.meta.env.VITE_API_URL}/api/formats`
+      );
+      if (response.data && Array.isArray(response.data)) {
+        setFormats(response.data);
+      } else {
+        throw new Error(
+          "Invalid response format: Expected an array of formats"
+        );
+      }
+    } catch (error) {
+      notificationApi.error({
+        message: "Error",
+        description: `Failed to fetch formats: ${error.message}`,
+      });
+    }
+  }, [notificationApi]);
 
-    const storeNames = Object.keys(groupedByStore);
-    for (const storeName of storeNames) {
-      let storeGroups = groupedByStore[storeName];
+  // Fetch formats when component mounts
+  useEffect(() => {
+    fetchFormats();
+  }, [fetchFormats]);
 
-      storeGroups = storeGroups.map((group) =>
-        group.map((row) => {
-          const updatedRow = { ...row };
+  // Apply selected format
+  const applyFormat = useCallback(
+    (format) => {
+      if (!format) return;
 
-          let originalCoaValue = null;
-          if (
-            coaTargetIifColumn &&
-            updatedRow[coaTargetIifColumn] !== undefined
-          ) {
-            originalCoaValue = updatedRow[coaTargetIifColumn];
+      // Clear existing calculated columns from source data
+      const calcColNames =
+        format.calculatedColumns?.map((col) => col.name) || [];
+      const indicesToRemove = sourceColumns
+        .map((col, idx) => (calculatedColumnNames.includes(col) ? idx : -1))
+        .filter((idx) => idx !== -1)
+        .sort((a, b) => b - a); // Sort descending to remove from end
+      let tempSourceColumns = [...sourceColumns];
+      let tempSourceData = sourceData.map((row) => [...row]);
+
+      indicesToRemove.forEach((idx) => {
+        tempSourceColumns.splice(idx, 1);
+        tempSourceData = tempSourceData.map((row) => {
+          const newRow = [...row];
+          newRow.splice(idx, 1);
+          return newRow;
+        });
+      });
+
+      // Apply format states
+      setKeyMappings(format.keyMappings || {});
+      setValueMappings(format.valueMappings || {});
+      setSelectedColumns(format.selectedColumns || []);
+      setNonZeroColumns(format.nonZeroColumns || []);
+      setPositionMappings(format.positionMappings || {});
+      setCalculationType(format.calculationType || "Answer");
+      setCalculatedColumnTypes(format.calculatedColumnTypes || {});
+      setCalculatedColumnIsCustomString(
+        format.calculatedColumnIsCustomString || {}
+      );
+      setCalculatedColumnNames(calcColNames);
+      setEmptyColumnNames(format.emptyColumnNames || []);
+      setCoaTargetIifColumn(format.coaTargetIifColumn || null);
+      setBankTargetIifColumn(format.bankTargetIifColumn || null);
+      setStoreSplitIifColumn(format.storeSplitIifColumn || null);
+      setMemoMappingType(format.memoMappingType || "Keys");
+      setSelectedStates(format.selectedStates || []);
+      setSelectedBrands(format.selectedBrands || []);
+      setSelectedStoreNames(format.selectedStoreNames || []);
+      setNormalizedColumnMap(format.normalizedColumnMap || {});
+      setCalculatedColumnDefinitions(format.calculatedColumns || []);
+
+      // Recreate calculated columns
+      if (format.calculatedColumns?.length > 0 && sourceData.length > 0) {
+        format.calculatedColumns.forEach((calcCol) => {
+          const normalizedCalcCol = normalizeColumnName(calcCol.name);
+          const existingColumn = normalizedColumnLookup.get(normalizedCalcCol);
+
+          if (existingColumn && existingColumn !== calcCol.name) {
+            notificationApi.warning({
+              message: "Warning",
+              description: `Calculated column "${calcCol.name}" conflicts with existing column "${existingColumn}". Skipping.`,
+            });
+            return;
           }
 
-          if (
-            originalCoaValue &&
-            typeof originalCoaValue === "string" &&
-            originalCoaValue.trim() !== ""
-          ) {
-            const normalizedCoaValue = normalizeStoreName(originalCoaValue);
-            const memoKeys = Object.keys(memoMappings);
-            const matchedKey = memoKeys.find((key) => {
-              const normalizedKey = normalizeStoreName(key);
-              return normalizedCoaValue === normalizedKey;
-            });
-            if (matchedKey) {
-              let memoValue;
-              if (memoMappingType === "Keys") {
-                memoValue = memoMappings[matchedKey];
-              } else if (memoMappingType === "Values") {
-                const mappedColumnName = memoMappings[matchedKey];
-                const normalizedMappedColumn =
-                  normalizeColumnName(mappedColumnName);
-                const columnIndex = sourceColumns.findIndex(
-                  (col) => normalizeColumnName(col) === normalizedMappedColumn
-                );
-                if (columnIndex !== -1) {
-                  const sourceRowIndex = row.sourceRowIndex;
+          let newData;
+          let isCustomString = false;
+
+          if (calcCol.selectedColumns?.length === 1 && !calcCol.formula) {
+            const colIndex = tempSourceColumns.indexOf(
+              calcCol.selectedColumns[0]
+            );
+            if (colIndex === -1) {
+              notificationApi.warning({
+                message: "Warning",
+                description: `Column "${calcCol.selectedColumns[0]}" not found in source data. Skipping calculated column "${calcCol.name}".`,
+              });
+              return;
+            }
+            newData = tempSourceData.map((row) => row[colIndex] ?? "");
+            isCustomString = true;
+          } else {
+            const formula =
+              calcCol.formula || calcCol.selectedColumns?.join(" ") || "";
+            const normalizedSourceColumns = tempSourceColumns.map((col) =>
+              col.trim().toLowerCase()
+            );
+            const columns = formula
+              .split(/([-+*/()])/)
+              .map((part) => part.trim())
+              .filter((part) => part && !/[-+*/()]/.test(part))
+              .map((col) => col.toLowerCase());
+
+            isCustomString = !columns.some((col) =>
+              normalizedSourceColumns.includes(col)
+            );
+
+            if (isCustomString) {
+              if (!formula) {
+                notificationApi.warning({
+                  message: "Warning",
+                  description: `No formula provided for calculated column "${calcCol.name}". Skipping.`,
+                });
+                return;
+              }
+              newData = tempSourceData.map(() => formula);
+            } else {
+              newData = tempSourceData.map((row, rowIndex) => {
+                try {
+                  let formulaCopy = formula.toLowerCase();
+                  let isValid = true;
+
+                  columns.forEach((col) => {
+                    const colIndex = normalizedSourceColumns.indexOf(col);
+                    if (colIndex === -1) {
+                      throw new Error(
+                        `Column "${col}" not found in source data at row ${rowIndex}`
+                      );
+                    }
+                    let value = row[colIndex];
+
+                    if (value === null || value === undefined || value === "") {
+                      value = 0;
+                    } else if (typeof value === "string") {
+                      const cleanedValue = value.replace(/[^0-9.-]/g, "");
+                      const parsedValue = parseFloat(cleanedValue);
+                      if (
+                        isNaN(parsedValue) ||
+                        !cleanedValue.match(/^-?\d*\.?\d*$/)
+                      ) {
+                        value = 0;
+                        isValid = false;
+                      } else {
+                        value = parsedValue;
+                      }
+                    }
+
+                    const escapedCol = col.replace(
+                      /[.*+?^${}()|[\]\\#]/g,
+                      "\\$&"
+                    );
+                    formulaCopy = formulaCopy.replace(
+                      new RegExp(escapedCol, "g"),
+                      value
+                    );
+                  });
+
+                  if (!isValid || !formulaCopy.match(/^[0-9+\-*/().\s]+$/)) {
+                    throw new Error(
+                      `Invalid formula syntax: "${formulaCopy}" at row ${rowIndex}`
+                    );
+                  }
+
+                  const result =
+                    calcCol.calculationType === "Answer"
+                      ? eval(formulaCopy)
+                      : formulaCopy;
+
                   if (
-                    sourceRowIndex !== undefined &&
-                    sourceData[sourceRowIndex]
+                    calcCol.calculationType === "Answer" &&
+                    (isNaN(result) || !isFinite(result))
                   ) {
-                    memoValue = sourceData[sourceRowIndex][columnIndex];
+                    throw new Error(
+                      `Formula evaluation resulted in invalid number: "${result}" at row ${rowIndex}`
+                    );
+                  }
+
+                  return result;
+                } catch (error) {
+                  notificationApi.warning({
+                    message: "Warning",
+                    description: `Error calculating value for row ${
+                      rowIndex + 1
+                    } in column "${calcCol.name}": ${error.message}. Using 0.`,
+                  });
+                  return 0;
+                }
+              });
+            }
+          }
+
+          // Update source columns and data
+          if (!tempSourceColumns.includes(calcCol.name)) {
+            tempSourceColumns = [...tempSourceColumns, calcCol.name];
+          }
+          tempSourceData = tempSourceData.map((row, index) => [
+            ...row,
+            newData[index],
+          ]);
+
+          // Update calculated column states
+          setCalculatedColumnTypes((prev) => ({
+            ...prev,
+            [calcCol.name]: isCustomString
+              ? "Formula"
+              : calcCol.calculationType,
+          }));
+          setCalculatedColumnIsCustomString((prev) => ({
+            ...prev,
+            [calcCol.name]: isCustomString,
+          }));
+        });
+
+        // Apply updated columns and data
+        setSourceColumns(tempSourceColumns);
+        setSourceData(tempSourceData);
+
+        // Update normalized column map
+        const newNormalizedColumnMap = {};
+        tempSourceColumns.forEach((col) => {
+          const normalized = normalizeColumnName(col);
+          newNormalizedColumnMap[normalized] = col;
+        });
+        setNormalizedColumnMap((prev) => ({
+          ...prev,
+          ...newNormalizedColumnMap,
+        }));
+      }
+
+      setIsFormatModified(false);
+      notificationApi.success({
+        message: "Success",
+        description: `Format "${format.name}" applied successfully.`,
+      });
+    },
+    [
+      notificationApi,
+      sourceColumns,
+      sourceData,
+      calculatedColumnNames,
+      normalizedColumnLookup,
+      normalizeColumnName,
+    ]
+  );
+
+  // Handle format selection
+  const handleFormatChange = useCallback(
+    (formatId) => {
+      const format = formats.find((f) => f._id === formatId);
+      setSelectedFormat(formatId);
+      setFormatName(format ? format.name : "");
+      if (format) {
+        applyFormat(format);
+      } else {
+        // Reset to default state if no format is selected
+        setKeyMappings({});
+        setValueMappings({});
+        setSelectedColumns([]);
+        setNonZeroColumns([]);
+        setPositionMappings({});
+        setCalculationType("Answer");
+        setCalculatedColumnTypes({});
+        setCalculatedColumnIsCustomString({});
+        setCalculatedColumnNames([]);
+        setEmptyColumnNames([]);
+        setCoaTargetIifColumn(null);
+        setBankTargetIifColumn(null);
+        setStoreSplitIifColumn(null);
+        setMemoMappingType("Keys");
+        setSelectedStates([]);
+        setSelectedBrands([]);
+        setSelectedStoreNames([]);
+        setNormalizedColumnMap({});
+        setIsFormatModified(false);
+      }
+    },
+    [formats, applyFormat]
+  );
+
+  // Track changes to mappings and calculated columns
+  useEffect(() => {
+    if (selectedFormat) {
+      const format = formats.find((f) => f._id === selectedFormat);
+      if (format) {
+        const hasChanges =
+          JSON.stringify(keyMappings) !==
+            JSON.stringify(format.keyMappings || {}) ||
+          JSON.stringify(valueMappings) !==
+            JSON.stringify(format.valueMappings || {}) ||
+          JSON.stringify(selectedColumns) !==
+            JSON.stringify(format.selectedColumns || []) ||
+          JSON.stringify(nonZeroColumns) !==
+            JSON.stringify(format.nonZeroColumns || []) ||
+          JSON.stringify(positionMappings) !==
+            JSON.stringify(format.positionMappings || {}) ||
+          calculationType !== (format.calculationType || "Answer") ||
+          JSON.stringify(calculatedColumnTypes) !==
+            JSON.stringify(format.calculatedColumnTypes || {}) ||
+          JSON.stringify(calculatedColumnIsCustomString) !==
+            JSON.stringify(format.calculatedColumnIsCustomString || {}) ||
+          JSON.stringify(calculatedColumnNames) !==
+            JSON.stringify(format.calculatedColumnNames || []) ||
+          JSON.stringify(emptyColumnNames) !==
+            JSON.stringify(format.emptyColumnNames || []) ||
+          coaTargetIifColumn !== (format.coaTargetIifColumn || null) ||
+          bankTargetIifColumn !== (format.bankTargetIifColumn || null) ||
+          storeSplitIifColumn !== (format.storeSplitIifColumn || null) ||
+          memoMappingType !== (format.memoMappingType || "Keys") ||
+          JSON.stringify(selectedStates) !==
+            JSON.stringify(format.selectedStates || []) ||
+          JSON.stringify(selectedBrands) !==
+            JSON.stringify(format.selectedBrands || []) ||
+          JSON.stringify(selectedStoreNames) !==
+            JSON.stringify(format.selectedStoreNames || []) ||
+          JSON.stringify(normalizedColumnMap) !==
+            JSON.stringify(format.normalizedColumnMap || {});
+        setIsFormatModified(hasChanges);
+      }
+    }
+  }, [
+    keyMappings,
+    valueMappings,
+    selectedColumns,
+    nonZeroColumns,
+    positionMappings,
+    calculationType,
+    calculatedColumnTypes,
+    calculatedColumnIsCustomString,
+    calculatedColumnNames,
+    emptyColumnNames,
+    coaTargetIifColumn,
+    bankTargetIifColumn,
+    storeSplitIifColumn,
+    memoMappingType,
+    selectedStates,
+    selectedBrands,
+    selectedStoreNames,
+    normalizedColumnMap,
+    selectedFormat,
+    formats,
+  ]);
+
+  // Save or update format in database
+  const saveFormat = useCallback(
+    async (overrideFormatId = null) => {
+      if (!formatName) {
+        notificationApi.error({
+          message: "Error",
+          description: "Please provide a format name.",
+        });
+        return false;
+      }
+
+      const formatData = {
+        name: formatName,
+        keyMappings,
+        valueMappings,
+        selectedColumns,
+        nonZeroColumns,
+        positionMappings,
+        calculationType,
+        calculatedColumnTypes,
+        calculatedColumnIsCustomString,
+        calculatedColumnNames,
+        emptyColumnNames,
+        coaTargetIifColumn,
+        bankTargetIifColumn,
+        storeSplitIifColumn,
+        memoMappingType,
+        selectedStates,
+        selectedBrands,
+        selectedStoreNames,
+        normalizedColumnMap,
+        calculatedColumns: calculatedColumnDefinitions.map((col) => ({
+          name: col.name,
+          formula: col.formula,
+          selectedColumns: col.selectedColumns || [], // Include selected columns
+          calculationType: col.calculationType,
+        })),
+      };
+
+      try {
+        const existingFormat = formats.find((f) => f.name === formatName);
+        if (
+          existingFormat &&
+          existingFormat._id !== selectedFormat &&
+          !overrideFormatId
+        ) {
+          setPendingFormatData(formatData);
+          setExistingFormatId(existingFormat._id);
+          setShowOverwriteModal(true);
+          return false;
+        }
+
+        if (
+          selectedFormat &&
+          existingFormat?._id === selectedFormat &&
+          !overrideFormatId
+        ) {
+          await axios.put(
+            `${import.meta.env.VITE_API_URL}/api/formats/${selectedFormat}`,
+            formatData
+          );
+          notificationApi.success({
+            message: "Success",
+            description: `Format "${formatName}" updated successfully.`,
+          });
+        } else {
+          const endpoint = overrideFormatId
+            ? `${import.meta.env.VITE_API_URL}/api/formats/${overrideFormatId}`
+            : `${import.meta.env.VITE_API_URL}/api/formats`;
+          const method = overrideFormatId ? axios.put : axios.post;
+          const response = await method(endpoint, formatData);
+          const newFormat = response.data;
+          setFormats((prev) =>
+            overrideFormatId
+              ? prev.map((f) => (f._id === overrideFormatId ? newFormat : f))
+              : [...prev, newFormat]
+          );
+          setSelectedFormat(newFormat._id);
+          notificationApi.success({
+            message: "Success",
+            description: `Format "${formatName}" ${
+              overrideFormatId ? "updated" : "saved"
+            } successfully.`,
+          });
+        }
+        await fetchFormats();
+        setIsFormatModified(false);
+        return true;
+      } catch (error) {
+        if (
+          error.response?.status === 400 &&
+          error.response?.data?.message.includes("already exists")
+        ) {
+          setPendingFormatData(formatData);
+          setExistingFormatId(error.response.data._id);
+          setShowOverwriteModal(true);
+          return false;
+        }
+        notificationApi.error({
+          message: "Error",
+          description: `Failed to save format: ${error.message}`,
+        });
+        return false;
+      }
+    },
+    [
+      formatName,
+      keyMappings,
+      valueMappings,
+      selectedColumns,
+      nonZeroColumns,
+      positionMappings,
+      calculationType,
+      calculatedColumnTypes,
+      calculatedColumnIsCustomString,
+      calculatedColumnNames,
+      emptyColumnNames,
+      coaTargetIifColumn,
+      bankTargetIifColumn,
+      storeSplitIifColumn,
+      memoMappingType,
+      selectedStates,
+      selectedBrands,
+      selectedStoreNames,
+      normalizedColumnMap,
+      calculatedColumnDefinitions,
+      formats,
+      selectedFormat,
+      notificationApi,
+      fetchFormats,
+    ]
+  );
+
+  const handleOverwriteConfirm = useCallback(async () => {
+    if (pendingFormatData && existingFormatId) {
+      await saveFormat(existingFormatId);
+      setShowOverwriteModal(false);
+      setPendingFormatData(null);
+      setExistingFormatId(null);
+      return true;
+    }
+    return false;
+  }, [pendingFormatData, existingFormatId, saveFormat]);
+
+  const handleOverwriteCancel = useCallback(() => {
+    setShowOverwriteModal(false);
+    setPendingFormatData(null);
+    setExistingFormatId(null);
+    notificationApi.info({
+      message: "Info",
+      description: "Format save cancelled.",
+    });
+  }, [notificationApi]);
+
+  const downloadMappedData = useCallback(async () => {
+    // Validate required data
+    if (!sourceData.length || !Object.keys(keyMappings).length) {
+      notificationApi.error({
+        message: "Error",
+        description: "No source data or key mappings provided.",
+      });
+      return;
+    }
+
+    // Use a temporary format name if none provided, but don't save to database
+    let effectiveFormatName = formatName;
+    if (!effectiveFormatName) {
+      effectiveFormatName = "Format_" + moment().format("YYYYMMDD_HHmmss");
+      // Don't set formatName state to avoid implying a save
+    }
+
+    // Save or update format only if formatName is provided
+    if (formatName) {
+      try {
+        const saved = await saveFormat();
+        if (!saved) {
+          // If saveFormat returned false, it means we're waiting for overwrite confirmation
+          return;
+        }
+      } catch (error) {
+        notificationApi.error({
+          message: "Error",
+          description:
+            "Failed to save format: " + (error.message || "Unknown error"),
+        });
+        return;
+      }
+    }
+
+    setDownloading(true);
+
+    try {
+      const chunkSize = 1000;
+      const allMappedData = [];
+
+      // Process data in chunks
+      for (let i = 0; i < sourceData.length; i += chunkSize) {
+        const chunk = sourceData.slice(i, i + chunkSize);
+        const mappedChunk = generateMappedData(
+          chunk,
+          sourceColumns,
+          iifColumns,
+          keyMappings,
+          valueMappings,
+          nonZeroColumns,
+          positionMappings,
+          calculatedColumnNames,
+          calculatedColumnTypes,
+          calculatedColumnIsCustomString
+        );
+        mappedChunk.forEach(function (rowGroup, chunkIndex) {
+          const originalIndex = i + chunkIndex;
+          rowGroup.forEach(function (row) {
+            row.sourceRowIndex = originalIndex;
+          });
+        });
+        allMappedData.push.apply(allMappedData, mappedChunk); // Avoid spread operator
+      }
+
+      const flattenedData = allMappedData.reduce(function (acc, val) {
+        return acc.concat(val);
+      }, []); // Avoid flat()
+      const filledData = fillMissingDates(flattenedData);
+      const convertedData = convertDates(filledData);
+
+      // Validate store split column
+      const storeSplitSourceColumn = valueMappings[storeSplitIifColumn]
+        ? valueMappings[storeSplitIifColumn][0]
+        : null;
+      if (!storeSplitSourceColumn) {
+        notificationApi.error({
+          message: "Error",
+          description:
+            "No source column mapped to " +
+            (storeSplitIifColumn || "undefined") +
+            ". Cannot split by store.",
+        });
+        return;
+      }
+
+      // Group data by store
+      const groupedByStore = {};
+      allMappedData.forEach(function (rowGroup, rowIndex) {
+        const sourceRow = sourceData[rowIndex];
+        const storeName =
+          sourceRow[sourceColumns.indexOf(storeSplitSourceColumn)];
+
+        if (!storeName) return;
+
+        groupedByStore[storeName] = groupedByStore[storeName] || [];
+        const filledRowGroup = fillMissingDates(rowGroup);
+        const convertedRowGroup = convertDates(filledRowGroup);
+        groupedByStore[storeName].push(convertedRowGroup);
+      });
+
+      const zip = new JSZip();
+      const totalColumns = iifHeaderRows[0] ? iifHeaderRows[0].length : 0;
+
+      // Generate IIF files for each store
+      const storeNames = Object.keys(groupedByStore);
+      for (var j = 0; j < storeNames.length; j++) {
+        var storeName = storeNames[j];
+        var storeGroups = groupedByStore[storeName];
+
+        storeGroups = storeGroups.map(function (group) {
+          return group.map(function (row) {
+            var updatedRow = Object.assign({}, row);
+
+            // Handle COA mapping
+            var originalCoaValue = null;
+            if (
+              coaTargetIifColumn &&
+              updatedRow[coaTargetIifColumn] !== undefined
+            ) {
+              originalCoaValue = updatedRow[coaTargetIifColumn];
+            }
+
+            if (
+              originalCoaValue &&
+              typeof originalCoaValue === "string" &&
+              originalCoaValue.trim() !== ""
+            ) {
+              var normalizedCoaValue = normalizeStoreName(originalCoaValue);
+              var memoKeys = Object.keys(memoMappings);
+              var matchedKey = memoKeys.find(function (key) {
+                return normalizeStoreName(key) === normalizedCoaValue;
+              });
+              if (matchedKey) {
+                var memoValue;
+                if (memoMappingType === "Keys") {
+                  memoValue = memoMappings[matchedKey];
+                } else if (memoMappingType === "Values") {
+                  var mappedColumnName = memoMappings[matchedKey];
+                  var normalizedMappedColumn =
+                    normalizeColumnName(mappedColumnName);
+                  var columnIndex = sourceColumns.findIndex(function (col) {
+                    return normalizeColumnName(col) === normalizedMappedColumn;
+                  });
+                  if (columnIndex !== -1) {
+                    var sourceRowIndex = row.sourceRowIndex;
+                    memoValue =
+                      sourceRowIndex !== undefined && sourceData[sourceRowIndex]
+                        ? sourceData[sourceRowIndex][columnIndex]
+                        : "";
                   } else {
                     memoValue = "";
                   }
-                } else {
-                  memoValue = "";
-                }
-              } else if (memoMappingType === "Both") {
-                const mappedColumnName = memoMappings[matchedKey];
-                const normalizedMappedColumn =
-                  normalizeColumnName(mappedColumnName);
-                const columnIndex = sourceColumns.findIndex(
-                  (col) => normalizeColumnName(col) === normalizedMappedColumn
-                );
-                if (columnIndex !== -1) {
-                  const sourceRowIndex = row.sourceRowIndex;
-                  if (
-                    sourceRowIndex !== undefined &&
-                    sourceData[sourceRowIndex]
-                  ) {
-                    memoValue = sourceData[sourceRowIndex][columnIndex];
+                } else if (memoMappingType === "Both") {
+                  var mappedColumnName = memoMappings[matchedKey];
+                  var normalizedMappedColumn =
+                    normalizeColumnName(mappedColumnName);
+                  var columnIndex = sourceColumns.findIndex(function (col) {
+                    return normalizeColumnName(col) === normalizedMappedColumn;
+                  });
+                  if (columnIndex !== -1) {
+                    var sourceRowIndex = row.sourceRowIndex;
+                    memoValue =
+                      sourceRowIndex !== undefined && sourceData[sourceRowIndex]
+                        ? sourceData[sourceRowIndex][columnIndex]
+                        : memoMappings[matchedKey];
                   } else {
                     memoValue = memoMappings[matchedKey];
                   }
-                } else {
-                  memoValue = memoMappings[matchedKey];
                 }
-              }
 
-              if (memoValue && iifColumns.includes("MEMO")) {
-                const currentMemo = updatedRow["MEMO"] || "";
-                updatedRow["MEMO"] = currentMemo
-                  ? `${currentMemo} ${memoValue}`
-                  : memoValue;
-              } else if (!iifColumns.includes("MEMO")) {
-                notificationApi.warning({
-                  message: "Warning",
-                  description:
-                    "MEMO column not found in IIF template. MEMO mapping will be skipped.",
-                });
-              }
-            }
-          }
-
-          if (
-            coaTargetIifColumn &&
-            updatedRow[coaTargetIifColumn] !== undefined
-          ) {
-            const value = updatedRow[coaTargetIifColumn];
-            if (typeof value === "string") {
-              const normalizedValue = normalizeStoreName(value);
-              const originalKeys = Object.keys(coaMappings);
-              for (let key of originalKeys) {
-                const normalizedKey = normalizeStoreName(key);
-                if (normalizedValue === normalizedKey) {
-                  updatedRow[coaTargetIifColumn] = coaMappings[key];
-                  break;
+                if (memoValue && iifColumns.includes("MEMO")) {
+                  var currentMemo = updatedRow["MEMO"] || "";
+                  updatedRow["MEMO"] = currentMemo
+                    ? currentMemo + " " + memoValue
+                    : memoValue;
+                } else if (!iifColumns.includes("MEMO")) {
+                  notificationApi.warning({
+                    message: "Warning",
+                    description:
+                      "MEMO column not found in IIF template. MEMO mapping will be skipped.",
+                  });
                 }
               }
             }
-          }
 
-          if (
-            bankTargetIifColumn &&
-            updatedRow[bankTargetIifColumn] !== undefined
-          ) {
-            const value = updatedRow[bankTargetIifColumn];
-            if (typeof value === "string") {
-              const normalizedValue = normalizeStoreName(value);
-              const originalKeys = Object.keys(bankMappings);
-              for (let key of originalKeys) {
-                const normalizedKey = normalizeStoreName(key);
-                if (normalizedValue === normalizedKey) {
-                  updatedRow[bankTargetIifColumn] = bankMappings[key];
-                  break;
+            // Apply COA mappings
+            if (
+              coaTargetIifColumn &&
+              updatedRow[coaTargetIifColumn] !== undefined
+            ) {
+              var value = updatedRow[coaTargetIifColumn];
+              if (typeof value === "string") {
+                var normalizedValue = normalizeStoreName(value);
+                var originalKeys = Object.keys(coaMappings);
+                for (var k = 0; k < originalKeys.length; k++) {
+                  var key = originalKeys[k];
+                  var normalizedKey = normalizeStoreName(key);
+                  if (normalizedValue === normalizedKey) {
+                    updatedRow[coaTargetIifColumn] = coaMappings[key];
+                    break;
+                  }
                 }
               }
             }
-          }
 
-          delete updatedRow.sourceRowIndex;
-          return updatedRow;
-        })
-      );
+            // Apply bank mappings
+            if (
+              bankTargetIifColumn &&
+              updatedRow[bankTargetIifColumn] !== undefined
+            ) {
+              var value = updatedRow[bankTargetIifColumn];
+              if (typeof value === "string" && value.trim() !== "") {
+                var normalizedValue = normalizeStoreName(value);
+                var mappedValue = bankMappingLookup.get(normalizedValue);
 
-      const storeWorksheetData = [...iifHeaderRows, ["!ENDTRNS"]];
+                if (!mappedValue) {
+                  var numberMatch = extractNumber(value);
+                  if (numberMatch) {
+                    var entries = bankMappingLookup.entries();
+                    for (var entry of entries) {
+                      var key = entry[0];
+                      var mappedColName = entry[1];
+                      var posNumber = extractNumber(key);
+                      if (posNumber && posNumber === numberMatch) {
+                        mappedValue = mappedColName;
+                        break;
+                      }
+                    }
+                  }
+                }
 
-      storeGroups.sort((groupA, groupB) => {
-        const dateA = new Date(groupA[0].DATE);
-        const dateB = new Date(groupB[0].DATE);
-        return dateA - dateB;
-      });
+                if (mappedValue) {
+                  updatedRow[bankTargetIifColumn] = mappedValue;
+                }
+              }
+            }
 
-      const allRows = storeGroups.flat();
-      let currentDate = null;
-
-      allRows.forEach((row) => {
-        const rowDate = row.DATE;
-
-        if (currentDate !== rowDate) {
-          if (currentDate !== null) {
-            const endRow = Array(totalColumns).fill("");
-            endRow[0] = "ENDTRNS";
-            storeWorksheetData.push(endRow);
-          }
-
-          currentDate = rowDate;
-          const dataRow = Array(totalColumns).fill("");
-          dataRow[0] = "TRNS";
-          iifColumns.forEach((col, colIndex) => {
-            dataRow[colIndex + 1] = row[col] !== undefined ? row[col] : "";
+            delete updatedRow.sourceRowIndex;
+            return updatedRow;
           });
-          storeWorksheetData.push(dataRow);
-        } else if (!row.ENDTRNS) {
-          const dataRow = Array(totalColumns).fill("");
-          dataRow[0] = "SPL";
-          iifColumns.forEach((col, colIndex) => {
-            dataRow[colIndex + 1] = row[col] !== undefined ? row[col] : "";
-          });
-          storeWorksheetData.push(dataRow);
-        }
-      });
+        });
 
-      if (allRows.length > 0) {
-        const endRow = Array(totalColumns).fill("");
-        endRow[0] = "ENDTRNS";
-        storeWorksheetData.push(endRow);
+        var storeWorksheetData = iifHeaderRows.concat([["!ENDTRNS"]]);
+
+        storeGroups.forEach(function (group) {
+          if (group.length === 0) return;
+
+          var firstRow = group[0];
+          var trnsRow = Array(totalColumns).fill("");
+          trnsRow[0] = "TRNS";
+          iifColumns.forEach(function (col, colIndex) {
+            trnsRow[colIndex + 1] =
+              firstRow[col] !== undefined ? firstRow[col] : "";
+          });
+          storeWorksheetData.push(trnsRow);
+
+          for (var i = 1; i < group.length; i++) {
+            var splRow = Array(totalColumns).fill("");
+            splRow[0] = "SPL";
+            iifColumns.forEach(function (col, colIndex) {
+              splRow[colIndex + 1] =
+                group[i][col] !== undefined ? group[i][col] : "";
+            });
+            storeWorksheetData.push(splRow);
+          }
+
+          var endRow = Array(totalColumns).fill("");
+          endRow[0] = "ENDTRNS";
+          storeWorksheetData.push(endRow);
+        });
+
+        var iifContent = storeWorksheetData
+          .map(function (row) {
+            return row.join("\t");
+          })
+          .join("\n");
+        var sanitizedStoreName = storeName.replace(/[^a-zA-Z0-9-_ ]/g, "_");
+        var fileName = sanitizedStoreName + ".iif";
+        zip.file(fileName, iifContent);
       }
 
-      const iifContent = storeWorksheetData
-        .map((row) => row.join("\t"))
-        .join("\n");
-      const sanitizedStoreName = storeName.replace(/[^a-zA-Z0-9-_ ]/g, "_");
-      const fileName = `${sanitizedStoreName}.iif`;
-      zip.file(fileName, iifContent);
-    }
-
-    zip.generateAsync({ type: "blob" }).then((content) => {
-      const link = document.createElement("a");
-      const url = URL.createObjectURL(content);
+      // Generate and download zip file
+      var content = await zip.generateAsync({ type: "blob" });
+      var link = document.createElement("a");
+      var url = URL.createObjectURL(content);
       link.setAttribute("href", url);
       link.setAttribute("download", "store_iif_files.zip");
       link.style.visibility = "hidden";
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      notificationApi.success({
+        message: "Success",
+        description: "Mapped data downloaded successfully.",
+      });
+    } catch (error) {
+      notificationApi.error({
+        message: "Error",
+        description:
+          "Failed to download mapped data: " +
+          (error.message || "Unknown error"),
+      });
+    } finally {
       setDownloading(false);
-    });
+    }
   }, [
     sourceData,
     sourceColumns,
@@ -1151,7 +2073,7 @@ const IMHome = () => {
     coaTargetIifColumn,
     coaMappings,
     bankTargetIifColumn,
-    bankMappings,
+    bankMappingLookup,
     memoMappings,
     memoMappingType,
     normalizeStoreName,
@@ -1164,62 +2086,42 @@ const IMHome = () => {
     calculatedColumnNames,
     calculatedColumnTypes,
     calculatedColumnIsCustomString,
+    extractNumber,
+    formatName,
+    saveFormat, // Keep saveFormat in dependencies
   ]);
+
+  // Update UI to reflect normalized column mappings
+  const normalizedSourceColumns = useMemo(() => {
+    return sourceColumns.map(
+      (col) => normalizedColumnLookup.get(normalizeColumnName(col)) || col
+    );
+  }, [sourceColumns, normalizedColumnLookup, normalizeColumnName]);
 
   return (
     <>
       {contextHolder}
+      <Modal
+        title="Format Name Conflict"
+        visible={showOverwriteModal}
+        onOk={handleOverwriteConfirm}
+        onCancel={handleOverwriteCancel}
+        okText="Overwrite"
+        cancelText="Cancel"
+      >
+        <p>
+          A format named "{formatName}" already exists. Do you want to overwrite
+          it?
+        </p>
+      </Modal>
       <section className="py-5">
         <div className="container">
           <div className="space-y-4">
             <Row gutter={[16, 16]}>
               <Col span={24}>
-                <IMCard
-                  extra={
-                    <IMPopover
-                      className={"mapping-popver"}
-                      content={
-                        <>
-                          <p>
-                            <strong>
-                              Select the IIF column (COA Mapping):
-                            </strong>{" "}
-                            <br />
-                            Choose the column where you'll map the original COA
-                            names.
-                          </p>
-                          <p>
-                            <strong>
-                              Select the IIF column (Bank Mapping):
-                            </strong>{" "}
-                            <br />
-                            Choose the column where you'll map the original bank
-                            names.
-                          </p>
-                          <p>
-                            <strong>
-                              Select the IIF column (Store Splitting):
-                            </strong>{" "}
-                            <br />
-                            Choose the column where you'll map the store names.
-                          </p>
-                        </>
-                      }
-                    />
-                  }
-                >
+                <IMCard>
                   <Row gutter={[16, 16]}>
-                    <Col span={8}>
-                      <IMUpload
-                        handleChange={({ file }) => parseSourceFile(file)}
-                        accept=".xlsx,.xls,.csv"
-                        variant="solid"
-                        color="default"
-                      >
-                        Upload Source Data Sheet
-                      </IMUpload>
-                    </Col>
-                    <Col span={8}>
+                    <Col span={24}>
                       <IMDatePicker
                         value={[startDate, endDate]}
                         handleChange={handleDateChange}
@@ -1235,129 +2137,6 @@ const IMHome = () => {
                       >
                         {fetchingData ? <Spin size="small" /> : "Get Data"}
                       </IMButton>
-                    </Col>
-                    <Col span={8}>
-                      <IMUpload
-                        handleChange={({ file }) => parseIIFTemplate(file)}
-                        accept=".iif,.txt"
-                        variant="solid"
-                        color="default"
-                      >
-                        Upload IIF Template
-                      </IMUpload>
-                    </Col>
-                    <Col span={8}>
-                      <IMUpload
-                        handleChange={({ file }) => parseCoaMappingFile(file)}
-                        accept=".iif,.txt,.csv"
-                        variant="solid"
-                        color="default"
-                      >
-                        Upload COA Mapping Sheet
-                      </IMUpload>
-                    </Col>
-                    <Col span={8}>
-                      <IMUpload
-                        handleChange={({ file }) => parseBankMappingFile(file)}
-                        accept=".xlsx,.xls,.csv"
-                        variant="solid"
-                        color="default"
-                      >
-                        Upload Bank Mapping Sheet
-                      </IMUpload>
-                    </Col>
-                    <Col span={8}>
-                      <IMUpload
-                        handleChange={({ file }) => parseMemoMappingFile(file)}
-                        accept=".xlsx,.xls,.csv"
-                        variant="solid"
-                        color="default"
-                      >
-                        Upload MEMO Mapping Sheet
-                      </IMUpload>
-                    </Col>
-                    <Col span={8}>
-                      <label className="selectLabel" htmlFor="COAMappingSelect">
-                        Select the IIF column (COA Mapping)
-                      </label>
-                      <IMSelect
-                        id={"COAMappingSelect"}
-                        value={coaTargetIifColumn}
-                        handleChange={handleCoaTargetIifColumnChange}
-                        placeholder={"Select the IIF column (COA Mapping)"}
-                        disabled={!iifColumns.length}
-                        style={{ width: "100%" }}
-                      >
-                        {iifColumns.map((iifColumn) => (
-                          <Select.Option
-                            key={`iif-coa-${iifColumn}`}
-                            value={iifColumn}
-                          >
-                            {iifColumn}
-                          </Select.Option>
-                        ))}
-                      </IMSelect>
-                    </Col>
-                    <Col span={8}>
-                      <label
-                        className="selectLabel"
-                        htmlFor="BANKMappingSelect"
-                      >
-                        Select the IIF column (Bank Mapping)
-                      </label>
-                      <IMSelect
-                        id={"BANKMappingSelect"}
-                        value={bankTargetIifColumn}
-                        handleChange={handleBankTargetIifColumnChange}
-                        placeholder={"Select the IIF column (Bank Mapping)"}
-                        disabled={!iifColumns.length}
-                        style={{ width: "100%" }}
-                      >
-                        {iifColumns.map((iifColumn) => (
-                          <Select.Option
-                            key={`iif-bank-${iifColumn}`}
-                            value={iifColumn}
-                          >
-                            {iifColumn}
-                          </Select.Option>
-                        ))}
-                      </IMSelect>
-                    </Col>
-                    <Col span={8}>
-                      <label
-                        className="selectLabel"
-                        htmlFor="StorenameSplittingMappingSelect"
-                      >
-                        Select the IIF column (Store Splitting)
-                      </label>
-                      <IMSelect
-                        id={"StorenameSplittingMappingSelect"}
-                        value={storeSplitIifColumn}
-                        handleChange={handleStoreSplitIifColumnChange}
-                        placeholder={"Select the IIF column (Store Splitting)"}
-                        disabled={!iifColumns.length}
-                        style={{ width: "100%" }}
-                      >
-                        {iifColumns.map((iifColumn) => (
-                          <Select.Option
-                            key={`iif-store-split-${iifColumn}`}
-                            value={iifColumn}
-                          >
-                            {iifColumn}
-                          </Select.Option>
-                        ))}
-                      </IMSelect>
-                    </Col>
-                    <Col span={8}>
-                      <label>MEMO Mapping Type:  </label>
-                      <Radio.Group
-                        value={memoMappingType}
-                        onChange={(e) => setMemoMappingType(e.target.value)}
-                      >
-                        <Radio value="Keys">Keys</Radio>
-                        <Radio value="Values">Values</Radio>
-                        <Radio value="Both">Both</Radio>
-                      </Radio.Group>
                     </Col>
                     <Col span={8}>
                       <label className="selectLabel" htmlFor="StateSelect">
@@ -1384,7 +2163,9 @@ const IMHome = () => {
                             <div style={{ padding: "4px 8px" }}>
                               <IMButton
                                 size="small"
-                                onClick={() => setSelectedStates(states)}
+                                onClick={() =>
+                                  setSelectedStates(filteredStates)
+                                }
                                 style={{ marginRight: 8 }}
                               >
                                 Select All
@@ -1400,7 +2181,7 @@ const IMHome = () => {
                           </>
                         )}
                       >
-                        {states.map((state) => (
+                        {filteredStates.map((state) => (
                           <Select.Option key={`state-${state}`} value={state}>
                             {state}
                           </Select.Option>
@@ -1432,7 +2213,9 @@ const IMHome = () => {
                             <div style={{ padding: "4px 8px" }}>
                               <IMButton
                                 size="small"
-                                onClick={() => setSelectedBrands(brands)}
+                                onClick={() =>
+                                  setSelectedBrands(filteredBrands)
+                                }
                                 style={{ marginRight: 8 }}
                               >
                                 Select All
@@ -1448,7 +2231,7 @@ const IMHome = () => {
                           </>
                         )}
                       >
-                        {brands.map((brand) => (
+                        {filteredBrands.map((brand) => (
                           <Select.Option key={`brand-${brand}`} value={brand}>
                             {brand}
                           </Select.Option>
@@ -1481,7 +2264,7 @@ const IMHome = () => {
                               <IMButton
                                 size="small"
                                 onClick={() =>
-                                  setSelectedStoreNames(storeNames)
+                                  setSelectedStoreNames(filteredStoreNames)
                                 }
                                 style={{ marginRight: 8 }}
                               >
@@ -1498,7 +2281,7 @@ const IMHome = () => {
                           </>
                         )}
                       >
-                        {storeNames.map((store) => (
+                        {filteredStoreNames.map((store) => (
                           <Select.Option key={`store-${store}`} value={store}>
                             {store}
                           </Select.Option>
@@ -1518,315 +2301,594 @@ const IMHome = () => {
                   </Row>
                 </IMCard>
               </Col>
-
               <Col span={24}>
                 <IMCard
-                  title={"Create Calculated Column"}
                   extra={
-                    <div className="calculated-col-extra-wrap">
-                      <div className="calculation-type-wrap">
-                        <label>Calculation Type: </label>
-                        <Radio.Group
-                          value={calculationType}
-                          onChange={(e) => setCalculationType(e.target.value)}
-                        >
-                          <Radio value="Formula">Formula</Radio>
-                          <Radio value="Answer">Answer</Radio>
-                        </Radio.Group>
-                      </div>
+                    isAdmin && (
                       <IMPopover
                         className={"mapping-popver"}
                         content={
                           <>
-                            <p>Create a new column using a formula!</p>
                             <p>
-                              <b>Step 1:</b> Pick the columns you want to use.
+                              <strong>
+                                Select the IIF column (COA Mapping):
+                              </strong>{" "}
+                              <br />
+                              Choose the column where you'll map the original
+                              COA names.
                             </p>
                             <p>
-                              <b>Step 2:</b> Write a formula using math signs
-                              (+, -, *, /). <br /> Example:{" "}
-                              <b>column1 + column2 -!- column3</b>
+                              <strong>
+                                Select the IIF column (Bank Mapping):
+                              </strong>{" "}
+                              <br />
+                              Choose the column where you'll map the original
+                              bank names.
                             </p>
                             <p>
-                              <b>Step 3:</b> Name your new column. It’ll show up
-                              for mapping!
+                              <strong>
+                                Select the IIF column (Store Splitting):
+                              </strong>{" "}
+                              <br />
+                              Choose the column where you'll map the store
+                              names.
                             </p>
                           </>
                         }
                       />
-                    </div>
+                    )
                   }
                 >
                   <Row gutter={[16, 16]}>
-                    <Col span={12}>
-                      <Select
-                        mode="multiple"
-                        value={selectedColumns}
-                        onChange={handleSelectedColumnsChange}
-                        placeholder={"Select Columns"}
+                    <Col span={8}>
+                      <IMUpload
+                        handleChange={({ file }) => parseSourceFile(file)}
+                        accept=".xlsx,.xls,.csv"
+                        variant="solid"
+                        color="default"
+                      >
+                        Upload Source Data Sheet
+                      </IMUpload>
+                    </Col>
+                    <Col span={8}>
+                      <IMUpload
+                        handleChange={({ file }) => parseIIFTemplate(file)}
+                        accept=".iif,.txt"
+                        variant="solid"
+                        color="default"
+                      >
+                        Upload IIF Template
+                      </IMUpload>
+                    </Col>
+
+                    <Col span={8}>
+                      <IMUpload
+                        handleChange={({ file }) => parseCoaMappingFile(file)}
+                        accept=".iif,.txt,.csv"
+                        variant="solid"
+                        color="default"
+                      >
+                        Upload COA Mapping Sheet
+                      </IMUpload>
+                    </Col>
+                    <Col span={8}>
+                      <IMUpload
+                        handleChange={({ file }) => parseMemoMappingFile(file)}
+                        accept=".xlsx,.xls,.csv"
+                        variant="solid"
+                        color="default"
+                      >
+                        Upload MEMO Mapping Sheet
+                      </IMUpload>
+                    </Col>
+                    {isAdmin && (
+                      <>
+                        <Col span={8}>
+                          <label
+                            className="selectLabel"
+                            htmlFor="COAMappingSelect"
+                          >
+                            Select the IIF column (COA Mapping)
+                          </label>
+                          <IMSelect
+                            id={"COAMappingSelect"}
+                            value={coaTargetIifColumn}
+                            handleChange={handleCoaTargetIifColumnChange}
+                            placeholder={"Select the IIF column (COA Mapping)"}
+                            disabled={!iifColumns.length}
+                            style={{ width: "100%" }}
+                          >
+                            {iifColumns.map((iifColumn) => (
+                              <Select.Option
+                                key={`iif-coa-${iifColumn}`}
+                                value={iifColumn}
+                              >
+                                {iifColumn}
+                              </Select.Option>
+                            ))}
+                          </IMSelect>
+                        </Col>
+                        <Col span={8}>
+                          <label
+                            className="selectLabel"
+                            htmlFor="BANKMappingSelect"
+                          >
+                            Select the IIF column (Bank Mapping)
+                          </label>
+                          <IMSelect
+                            id={"BANKMappingSelect"}
+                            value={bankTargetIifColumn}
+                            handleChange={handleBankTargetIifColumnChange}
+                            placeholder={"Select the IIF column (Bank Mapping)"}
+                            disabled={!iifColumns.length}
+                            style={{ width: "100%" }}
+                          >
+                            {iifColumns.map((iifColumn) => (
+                              <Select.Option
+                                key={`iif-bank-${iifColumn}`}
+                                value={iifColumn}
+                              >
+                                {iifColumn}
+                              </Select.Option>
+                            ))}
+                          </IMSelect>
+                        </Col>
+                        <Col span={8}>
+                          <label
+                            className="selectLabel"
+                            htmlFor="StorenameSplittingMappingSelect"
+                          >
+                            Select the IIF column (Store Splitting)
+                          </label>
+                          <IMSelect
+                            id={"StorenameSplittingMappingSelect"}
+                            value={storeSplitIifColumn}
+                            handleChange={handleStoreSplitIifColumnChange}
+                            placeholder={
+                              "Select the IIF column (Store Splitting)"
+                            }
+                            disabled={!iifColumns.length}
+                            style={{ width: "100%" }}
+                          >
+                            {iifColumns.map((iifColumn) => (
+                              <Select.Option
+                                key={`iif-store-split-${iifColumn}`}
+                                value={iifColumn}
+                              >
+                                {iifColumn}
+                              </Select.Option>
+                            ))}
+                          </IMSelect>
+                        </Col>
+                        <Col span={8}>
+                          <label>MEMO Mapping Type:  </label>
+                          <Radio.Group
+                            value={memoMappingType}
+                            onChange={(e) => setMemoMappingType(e.target.value)}
+                          >
+                            <Radio value="Keys">Keys</Radio>
+                            <Radio value="Values">Values</Radio>
+                            <Radio value="Both">Both</Radio>
+                          </Radio.Group>
+                        </Col>
+                      </>
+                    )}
+
+                    <Col span={24}>
+                      <label className="selectLabel" htmlFor="FormatSelect">
+                        Select Format
+                      </label>
+                      <IMSelect
+                        id={"FormatSelect"}
+                        value={selectedFormat}
+                        handleChange={handleFormatChange}
+                        placeholder={"Select a Format"}
+                        disabled={!formats.length}
                         style={{ width: "100%" }}
                       >
-                        {sourceColumns.map((sourceColumn) => (
+                        {formats.map((format) => (
                           <Select.Option
-                            key={`col-${sourceColumn}`}
-                            value={sourceColumn}
+                            key={`format-${format._id}`}
+                            value={format._id}
                           >
-                            {sourceColumn}
+                            {format.name}
                           </Select.Option>
                         ))}
-                      </Select>
-                    </Col>
-                    <Col span={12}>
-                      <Input
-                        value={calculatedColumn}
-                        onChange={handleCalculatedColumnChange}
-                        className="w-full"
-                        placeholder="Give a name to column"
-                      />
-                    </Col>
-                    <Col span={24}>
-                      <Input.TextArea
-                        value={
-                          calculatedColumnsFormula || selectedColumns.join(" ")
-                        }
-                        onChange={handleCalculatedColumnsFormulaChange}
-                        placeholder="Formula"
-                      />
-                    </Col>
-                    <Col span={24}>
-                      <IMButton
-                        handleClick={addCalculatedColumn}
-                        variant={"filled"}
-                        color={"purple"}
-                      >
-                        Add Calculated Column
-                      </IMButton>
+                      </IMSelect>
                     </Col>
                   </Row>
                 </IMCard>
               </Col>
-              <Col span={24}>
-                {iifColumns.length > 0 && sourceColumns.length > 0 && (
-                  <Row gutter={16}>
+              {isAdmin && (
+                <Col span={24}>
+                  <IMCard
+                    title={"Create Calculated Column"}
+                    extra={
+                      <div className="calculated-col-extra-wrap">
+                        <div className="calculation-type-wrap">
+                          <label>Calculation Type: </label>
+                          <Radio.Group
+                            value={calculationType}
+                            onChange={(e) => setCalculationType(e.target.value)}
+                          >
+                            <Radio value="Formula">Formula</Radio>
+                            <Radio value="Answer">Answer</Radio>
+                          </Radio.Group>
+                        </div>
+                        <IMPopover
+                          className={"mapping-popver"}
+                          content={
+                            <>
+                              <p>Create a new column using a formula!</p>
+                              <p>
+                                <b>Step 1:</b> Pick the columns you want to use.
+                              </p>
+                              <p>
+                                <b>Step 2:</b> Write a formula using math signs
+                                (+, -, *, /). <br /> Example:{" "}
+                                <b>column1 + column2 -!- column3</b>
+                              </p>
+                              <p>
+                                <b>Step 3:</b> Name your new column. It’ll show
+                                up for mapping!
+                              </p>
+                            </>
+                          }
+                        />
+                      </div>
+                    }
+                  >
+                    <Row gutter={[16, 16]}>
+                      <Col span={12}>
+                        <Select
+                          allowClear
+                          mode="multiple"
+                          value={selectedColumns}
+                          onChange={handleSelectedColumnsChange}
+                          placeholder={"Select Columns"}
+                          style={{ width: "100%" }}
+                        >
+                          {normalizedSourceColumns.map((sourceColumn) => (
+                            <Select.Option
+                              key={`col-${sourceColumn}`}
+                              value={sourceColumn}
+                            >
+                              {sourceColumn}
+                            </Select.Option>
+                          ))}
+                        </Select>
+                      </Col>
+                      <Col span={12}>
+                        <Input
+                          value={calculatedColumn}
+                          onChange={handleCalculatedColumnChange}
+                          className="w-full"
+                          placeholder="Give a name to column"
+                        />
+                      </Col>
+                      <Col span={24}>
+                        <Input.TextArea
+                          value={
+                            calculatedColumnsFormula ||
+                            selectedColumns.join(" ")
+                          }
+                          onChange={handleCalculatedColumnsFormulaChange}
+                          placeholder="Formula"
+                        />
+                      </Col>
+                      <Col span={24}>
+                        <IMButton
+                          handleClick={addCalculatedColumn}
+                          variant={"filled"}
+                          color={"purple"}
+                        >
+                          Add Calculated Column
+                        </IMButton>
+                      </Col>
+                      <Col span={12}>
+                        <Input
+                          value={emptyColumnName}
+                          onChange={handleEmptyColumnNameChange}
+                          className="w-full"
+                          placeholder="Give a name to empty column"
+                        />
+                      </Col>
+                      <Col span={24}>
+                        <IMButton
+                          handleClick={addEmptyColumn}
+                          variant={"filled"}
+                          color={"blue"}
+                        >
+                          Add Empty Column
+                        </IMButton>
+                      </Col>
+                    </Row>
+                  </IMCard>
+                </Col>
+              )}
+              {isAdmin && (
+                <Col span={24}>
+                  {iifColumns.length > 0 && sourceColumns.length > 0 && (
+                    <Row gutter={16}>
+                      <Col span={12}>
+                        <IMCard
+                          title={"Key Mapping (Column's names itself)"}
+                          extra={
+                            <IMPopover
+                              className={"mapping-popver"}
+                              content={<>content</>}
+                            />
+                          }
+                        >
+                          {iifColumns.map((iifColumn) => (
+                            <div key={`key-${iifColumn}`} className="mb-2">
+                              <label className="block mb-1">
+                                {iifColumn} (Key Mapping)
+                              </label>
+                              <select
+                                multiple
+                                value={keyMappings[iifColumn] || []}
+                                onChange={(e) => {
+                                  const selectedColumns = Array.from(
+                                    e.target.selectedOptions
+                                  ).map((option) => option.value);
+                                  handleKeyMapping(selectedColumns, iifColumn);
+                                }}
+                                className="w-full p-2 border rounded h-32"
+                              >
+                                {normalizedSourceColumns.map((sourceColumn) => (
+                                  <option
+                                    key={`key-${sourceColumn}`}
+                                    value={sourceColumn}
+                                  >
+                                    {sourceColumn}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          ))}
+                        </IMCard>
+                      </Col>
+                      <Col span={12}>
+                        <IMCard
+                          title={"Value Mapping (Column's data)"}
+                          extra={
+                            <IMPopover
+                              className={"mapping-popver"}
+                              content={<>content</>}
+                            />
+                          }
+                        >
+                          {iifColumns.map((iifColumn) => (
+                            <div key={`value-${iifColumn}`} className="mb-2">
+                              <label className="block mb-1">
+                                {iifColumn} (Value Mapping)
+                              </label>
+                              <select
+                                multiple
+                                value={valueMappings[iifColumn] || []}
+                                onChange={(e) => {
+                                  const selectedColumns = Array.from(
+                                    e.target.selectedOptions
+                                  ).map((option) => option.value);
+                                  handleValueMapping(
+                                    selectedColumns,
+                                    iifColumn
+                                  );
+                                }}
+                                className="w-full p-2 border rounded h-32"
+                              >
+                                {normalizedSourceColumns.map((sourceColumn) => (
+                                  <option
+                                    key={`value-${sourceColumn}`}
+                                    value={sourceColumn}
+                                  >
+                                    {sourceColumn}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          ))}
+                        </IMCard>
+                      </Col>
+                    </Row>
+                  )}
+                </Col>
+              )}
+              {isAdmin && (
+                <Col span={24}>
+                  <Row gutter={[16, 16]}>
                     <Col span={12}>
                       <IMCard
-                        title={"Key Mapping (Column's names itself)"}
+                        title={"Select columns for non-zero mapping"}
                         extra={
                           <IMPopover
                             className={"mapping-popver"}
-                            content={<>content</>}
+                            content={
+                              <>
+                                <p>
+                                  Pick columns you don’t want to map if they
+                                  have a zero (0).
+                                </p>
+                                <p>
+                                  Columns you don’t pick will map, even with
+                                  zeros!
+                                </p>
+                              </>
+                            }
                           />
                         }
                       >
-                        {iifColumns.map((iifColumn) => (
-                          <div key={`key-${iifColumn}`} className="mb-2">
-                            <label className="block mb-1">
-                              {iifColumn} (Key Mapping)
-                            </label>
-                            <select
-                              multiple
-                              onChange={(e) => {
-                                const selectedColumns = Array.from(
-                                  e.target.selectedOptions
-                                ).map((option) => option.value);
-                                handleKeyMapping(selectedColumns, iifColumn);
-                              }}
-                              className="w-full p-2 border rounded h-32"
+                        <select
+                          multiple
+                          value={nonZeroColumns}
+                          onChange={(e) => {
+                            const selectedColumns = Array.from(
+                              e.target.selectedOptions
+                            ).map((option) => option.value);
+                            setNonZeroColumns(selectedColumns);
+                          }}
+                          className="w-full p-2 border rounded h-32"
+                        >
+                          {normalizedSourceColumns.map((sourceColumn) => (
+                            <option
+                              key={`col-${sourceColumn}`}
+                              value={sourceColumn}
                             >
-                              {sourceColumns.map((sourceColumn) => (
-                                <option
-                                  key={`key-${sourceColumn}`}
-                                  value={sourceColumn}
-                                >
-                                  {sourceColumn}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        ))}
+                              {sourceColumn}
+                            </option>
+                          ))}
+                        </select>
                       </IMCard>
                     </Col>
 
                     <Col span={12}>
                       <IMCard
-                        title={"Value Mapping (Column's data)"}
+                        title={"Position Mapping"}
                         extra={
                           <IMPopover
                             className={"mapping-popver"}
-                            content={<>content</>}
+                            content={
+                              <>
+                                <p>
+                                  This is where you choose the order of your
+                                  column data.
+                                </p>
+                                <p>
+                                  Picking a number from 1 to 5 is highly
+                                  recommended.
+                                </p>
+                              </>
+                            }
                           />
                         }
                       >
-                        {iifColumns.map((iifColumn) => (
-                          <div key={`value-${iifColumn}`} className="mb-2">
-                            <label className="block mb-1">
-                              {iifColumn} (Value Mapping)
-                            </label>
-                            <select
-                              multiple
-                              onChange={(e) => {
-                                const selectedColumns = Array.from(
-                                  e.target.selectedOptions
-                                ).map((option) => option.value);
-                                handleValueMapping(selectedColumns, iifColumn);
-                              }}
-                              className="w-full p-2 border rounded h-32"
+                        {singleMappedColumns.map((column) => {
+                          const sourceColumn = valueMappings[column][0];
+                          const mappingColumn = Object.keys(valueMappings).find(
+                            (key) => valueMappings[key].includes(sourceColumn)
+                          );
+                          return (
+                            <div className="mb-2" key={`position-${column}`}>
+                              <label className="block mb-1">
+                                {sourceColumn} (Mapped to {mappingColumn}{" "}
+                                column):
+                              </label>
+                              <Select
+                                value={positionMappings[sourceColumn]}
+                                onChange={(value) =>
+                                  handlePositionMappingChange(
+                                    sourceColumn,
+                                    value
+                                  )
+                                }
+                                allowClear
+                                style={{ width: "100%" }}
+                              >
+                                {Array.from(
+                                  { length: sourceData.length },
+                                  (_, i) => i + 1
+                                ).map((position) => (
+                                  <Select.Option
+                                    key={`position-${sourceColumn}-${position}`}
+                                    value={position}
+                                  >
+                                    {position}
+                                  </Select.Option>
+                                ))}
+                              </Select>
+                            </div>
+                          );
+                        })}
+                        {calculatedMappedColumns.map((column) => {
+                          const sourceColumn = valueMappings[column].find(
+                            (col) => calculatedColumnNames.includes(col)
+                          );
+                          const mappingColumn = Object.keys(valueMappings).find(
+                            (key) => valueMappings[key].includes(sourceColumn)
+                          );
+                          return (
+                            <div
+                              className="mb-2"
+                              key={`position-calculated-${column}`}
                             >
-                              {sourceColumns.map((sourceColumn) => (
-                                <option
-                                  key={`value-${sourceColumn}`}
-                                  value={sourceColumn}
-                                >
-                                  {sourceColumn}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        ))}
+                              <label className="block mb-1">
+                                {sourceColumn} (Mapped to {mappingColumn}{" "}
+                                column):
+                              </label>
+                              <Select
+                                value={positionMappings[sourceColumn]}
+                                onChange={(value) =>
+                                  handlePositionMappingChange(
+                                    sourceColumn,
+                                    value
+                                  )
+                                }
+                                allowClear
+                                style={{ width: "100%" }}
+                              >
+                                {Array.from(
+                                  { length: sourceData.length },
+                                  (_, i) => i + 1
+                                ).map((position) => (
+                                  <Select.Option
+                                    key={`position-${sourceColumn}-${position}`}
+                                    value={position}
+                                  >
+                                    {position}
+                                  </Select.Option>
+                                ))}
+                              </Select>
+                            </div>
+                          );
+                        })}
+                        {emptyMappedColumns.map((column) => {
+                          const sourceColumn = valueMappings[column].find(
+                            (col) => emptyColumnNames.includes(col)
+                          );
+                          const mappingColumn = Object.keys(valueMappings).find(
+                            (key) => valueMappings[key].includes(sourceColumn)
+                          );
+                          return (
+                            <div
+                              className="mb-2"
+                              key={`position-empty-${sourceColumn}`}
+                            >
+                              <label className="block mb-1">
+                                {sourceColumn} (Mapped to {mappingColumn}{" "}
+                                column):
+                              </label>
+                              <Select
+                                value={positionMappings[sourceColumn]}
+                                onChange={(value) =>
+                                  handlePositionMappingChange(
+                                    sourceColumn,
+                                    value
+                                  )
+                                }
+                                allowClear
+                                style={{ width: "100%" }}
+                              >
+                                {Array.from(
+                                  { length: sourceData.length },
+                                  (_, i) => i + 1
+                                ).map((position) => (
+                                  <Select.Option
+                                    key={`position-${sourceColumn}-${position}`}
+                                    value={position}
+                                  >
+                                    {position}
+                                  </Select.Option>
+                                ))}
+                              </Select>
+                            </div>
+                          );
+                        })}
                       </IMCard>
                     </Col>
                   </Row>
-                )}
-              </Col>
-              <Col span={24}>
-                <Row gutter={[16, 16]}>
-                  <Col span={12}>
-                    <IMCard
-                      title={"Select columns for non-zero mapping"}
-                      extra={
-                        <IMPopover
-                          className={"mapping-popver"}
-                          content={
-                            <>
-                              <p>
-                                Pick columns you don’t want to map if they have
-                                a zero (0).
-                              </p>
-                              <p>
-                                Columns you don’t pick will map, even with
-                                zeros!
-                              </p>
-                            </>
-                          }
-                        />
-                      }
-                    >
-                      <select
-                        multiple
-                        value={nonZeroColumns}
-                        onChange={(e) => {
-                          const selectedColumns = Array.from(
-                            e.target.selectedOptions
-                          ).map((option) => option.value);
-                          setNonZeroColumns(selectedColumns);
-                        }}
-                        className="w-full p-2 border rounded h-32"
-                      >
-                        {sourceColumns.map((sourceColumn) => (
-                          <option
-                            key={`col-${sourceColumn}`}
-                            value={sourceColumn}
-                          >
-                            {sourceColumn}
-                          </option>
-                        ))}
-                      </select>
-                    </IMCard>
-                  </Col>
-
-                  <Col span={12}>
-                    <IMCard
-                      title={"Position Mapping"}
-                      extra={
-                        <IMPopover
-                          className={"mapping-popver"}
-                          content={
-                            <>
-                              <p>
-                                This is where you choose the order of your
-                                column data.
-                              </p>
-                              <p>
-                                Picking a number from 1 to 5 is highly
-                                recommended.
-                              </p>
-                            </>
-                          }
-                        />
-                      }
-                    >
-                      {singleMappedColumns.map((column) => {
-                        const sourceColumn = valueMappings[column][0];
-                        const mappingColumn = Object.keys(valueMappings).find(
-                          (key) => valueMappings[key].includes(sourceColumn)
-                        );
-                        return (
-                          <div className="mb-2" key={`position-${column}`}>
-                            <label className="block mb-1">
-                              {sourceColumn} (Mapped to {mappingColumn} column):
-                            </label>
-                            <Select
-                              value={positionMappings[sourceColumn]}
-                              onChange={(value) =>
-                                handlePositionMappingChange(sourceColumn, value)
-                              }
-                              allowClear
-                              style={{ width: "100%" }}
-                            >
-                              {Array.from(
-                                { length: sourceData.length },
-                                (_, i) => i + 1
-                              ).map((position) => (
-                                <Select.Option
-                                  key={`position-${sourceColumn}-${position}`}
-                                  value={position}
-                                >
-                                  {position}
-                                </Select.Option>
-                              ))}
-                            </Select>
-                          </div>
-                        );
-                      })}
-                      {newlyCreatedColumns.map((column) => {
-                        const sourceColumn = valueMappings[column].find((col) =>
-                          calculatedColumnNames.includes(col)
-                        );
-                        const mappingColumn = Object.keys(valueMappings).find(
-                          (key) => valueMappings[key].includes(sourceColumn)
-                        );
-                        return (
-                          <div className="mb-2" key={`position-${column}`}>
-                            <label className="block mb-1">
-                              {sourceColumn} (Mapped to {mappingColumn} column):
-                            </label>
-                            <Select
-                              value={positionMappings[sourceColumn]}
-                              onChange={(value) =>
-                                handlePositionMappingChange(sourceColumn, value)
-                              }
-                              allowClear
-                              style={{ width: "100%" }}
-                            >
-                              {Array.from(
-                                { length: sourceData.length },
-                                (_, i) => i + 1
-                              ).map((position) => (
-                                <Select.Option
-                                  key={`position-${sourceColumn}-${position}`}
-                                  value={position}
-                                >
-                                  {position}
-                                </Select.Option>
-                              ))}
-                            </Select>
-                          </div>
-                        );
-                      })}
-                    </IMCard>
-                  </Col>
-                </Row>
-              </Col>
+                </Col>
+              )}
               <Col span={24}>
                 <IMCard title={"Preview of Mapped Data (First 10 Rows)"}>
                   {previewData.length > 0 ? (
@@ -1861,6 +2923,15 @@ const IMHome = () => {
                 </IMCard>
               </Col>
               <Col span={24}>
+                {isAdmin && (
+                  <Input
+                    value={formatName}
+                    onChange={(e) => setFormatName(e.target.value)}
+                    className="w-full mb-3"
+                    placeholder="Enter Format Name"
+                    disabled={!isFormatModified && selectedFormat}
+                  />
+                )}
                 <IMButton
                   handleClick={downloadMappedData}
                   disabled={

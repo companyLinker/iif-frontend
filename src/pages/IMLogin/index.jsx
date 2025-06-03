@@ -11,19 +11,29 @@ const IMLogin = () => {
   const location = useLocation();
 
   const handleLogin = () => {
-    // Mock authentication (replace with real API call in production)
-    const validUsername = "admin";
-    const validPassword = "password123";
+    const adminUsername = `${import.meta.env.VITE_ADMIN_USR}`; // "s2"
+    const adminPassword = `${import.meta.env.VITE_ADMIN_PSSWRD}`; // "233"
+    const userUsername = `${import.meta.env.VITE_USER_USR}`; // "3333"
+    const userPassword = `${import.meta.env.VITE_USER_PSSWRD}`; // "21101"
 
-    if (username === validUsername && password === validPassword) {
-      // Store login state (e.g., in localStorage or context)
-      localStorage.setItem("isAuthenticated", "true");
-      // Redirect to the originally requested page or home
-      const from = location.state?.from?.pathname || "/";
-      navigate(from);
+    let role = null;
+
+    if (username === adminUsername && password === adminPassword) {
+      role = "admin";
+    } else if (username === userUsername && password === userPassword) {
+      role = "user";
     } else {
       setError("Invalid username or password");
+      return;
     }
+
+    // Store authentication and role
+    localStorage.setItem("isAuthenticated", "true");
+    localStorage.setItem("userRole", role);
+
+    // Redirect to the originally requested page or home
+    const from = location.state?.from?.pathname || "/";
+    navigate(from);
   };
 
   return (
