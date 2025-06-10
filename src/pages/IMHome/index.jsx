@@ -313,6 +313,48 @@ const IMHome = () => {
   const [calculatedColumnDefinitions, setCalculatedColumnDefinitions] =
     useState([]);
 
+  const [availableBrands, setAvailableBrands] = useState([]);
+  const [selectedDbBrand, setSelectedDbBrand] = useState(null);
+
+  const fetchBrands = useCallback(async () => {
+    try {
+      const response = await axios.get(
+        `${import.meta.env.VITE_API_URL}/api/brands`
+      );
+      if (response.data && Array.isArray(response.data)) {
+        setAvailableBrands(response.data.sort());
+      } else {
+        throw new Error("Invalid response format: Expected an array of brands");
+      }
+    } catch (error) {
+      notificationApi.error({
+        message: "Error",
+        description: `Failed to fetch brands: ${error.message}`,
+      });
+    }
+  }, [notificationApi]);
+
+  useEffect(() => {
+    fetchBrands();
+  }, [fetchBrands]);
+
+  const handleDbBrandChange = useCallback((value) => {
+    setSelectedDbBrand(value);
+    setSourceColumns([]);
+    setSourceData([]);
+    setAllData([]);
+    setBmData([]);
+    setStates([]);
+    setBrands([]);
+    setStoreNames([]);
+    setSelectedStates([]);
+    setSelectedBrands([]);
+    setSelectedStoreNames([]);
+    setBankMappingLookup(new Map());
+    setStartDate(null);
+    setEndDate(null);
+  }, []);
+
   // Retrieve user role from localStorage
   const isAdmin = localStorage.getItem("userRole") === "admin";
 
@@ -861,6 +903,14 @@ const IMHome = () => {
   }, []);
 
   const handleFetchData = useCallback(() => {
+    if (!selectedDbBrand) {
+      notificationApi.error({
+        message: "Error",
+        description: "Please select a brand.",
+      });
+      return;
+    }
+
     if (!startDate || !endDate) {
       notificationApi.error({
         message: "Error",
@@ -876,6 +926,7 @@ const IMHome = () => {
 
     axios
       .post(`${import.meta.env.VITE_API_URL}/api/data`, {
+        brand: selectedDbBrand,
         startDate: formattedStartDate,
         endDate: formattedEndDate,
       })
@@ -911,7 +962,7 @@ const IMHome = () => {
         } else {
           notificationApi.warning({
             message: "Warning",
-            description: "No data found for the selected date range.",
+            description: "No data found for the selected date range and brand.",
           });
           setSourceColumns([]);
           setSourceData([]);
@@ -934,6 +985,7 @@ const IMHome = () => {
         });
       });
   }, [
+    selectedDbBrand,
     startDate,
     endDate,
     notificationApi,
@@ -1051,17 +1103,24 @@ const IMHome = () => {
     } else {
       const formula = calculatedColumnsFormula || selectedColumns.join(" ");
       const normalizedSourceColumns = sourceColumns.map((col) =>
-        col.trim().toLowerCase()
+        normalizeColumnName(col)
       );
-      const columns = formula
-        .split(/([-+*/()])/)
-        .map((part) => part.trim())
-        .filter((part) => part && !/[-+*/()]/.test(part))
-        .map((col) => col.toLowerCase());
 
-      isCustomString = !columns.some((col) =>
-        normalizedSourceColumns.includes(col)
-      );
+      // Create a list of columns used in the formula
+      let formulaCopy = formula;
+      const formulaColumns = [];
+      sourceColumns.forEach((col) => {
+        const escapedCol = col.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const regex = new RegExp(
+          `(^|[\\s+\\-*/%\\(])\\s*(${escapedCol})\\s*([\\s+\\-*/%\\)]|$)`,
+          "gi"
+        );
+        if (regex.test(formulaCopy)) {
+          formulaColumns.push(col);
+        }
+      });
+
+      isCustomString = formulaColumns.length === 0;
 
       if (isCustomString) {
         if (!formula) {
@@ -1075,11 +1134,12 @@ const IMHome = () => {
       } else {
         newData = sourceData.map((row, rowIndex) => {
           try {
-            let formulaCopy = formula.toLowerCase();
+            let expression = formula;
             let isValid = true;
 
-            columns.forEach((col) => {
-              const colIndex = normalizedSourceColumns.indexOf(col);
+            // Replace column names with their values
+            formulaColumns.forEach((col) => {
+              const colIndex = sourceColumns.indexOf(col);
               if (colIndex === -1) {
                 throw new Error(
                   `Column "${col}" not found in source data at row ${rowIndex}`
@@ -1103,21 +1163,22 @@ const IMHome = () => {
                 }
               }
 
-              const escapedCol = col.replace(/[.*+?^${}()|[\]\\#]/g, "\\$&");
-              formulaCopy = formulaCopy.replace(
-                new RegExp(escapedCol, "g"),
-                value
+              const escapedCol = col.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+              const regex = new RegExp(
+                `(^|[\\s+\\-*/%\\(])\\s*(${escapedCol})\\s*([\\s+\\-*/%\\)]|$)`,
+                "gi"
               );
+              expression = expression.replace(regex, `$1${value}$3`);
             });
 
-            if (!isValid || !formulaCopy.match(/^[0-9+\-*/().\s]+$/)) {
+            if (!isValid || !expression.match(/^[0-9+\-*/().\s]+$/)) {
               throw new Error(
-                `Invalid formula syntax: "${formulaCopy}" at row ${rowIndex}`
+                `Invalid formula syntax: "${expression}" at row ${rowIndex}`
               );
             }
 
             const result =
-              calculationType === "Answer" ? eval(formulaCopy) : formulaCopy;
+              calculationType === "Answer" ? eval(expression) : expression;
 
             if (
               calculationType === "Answer" &&
@@ -1180,7 +1241,7 @@ const IMHome = () => {
       {
         name: calculatedColumn,
         formula: calculatedColumnsFormula || selectedColumns.join(" "),
-        selectedColumns: [...selectedColumns], // Include selected columns
+        selectedColumns: [...selectedColumns],
         calculationType: isCustomString ? "Formula" : calculationType,
       },
     ]);
@@ -2122,6 +2183,34 @@ const IMHome = () => {
                 <IMCard>
                   <Row gutter={[16, 16]}>
                     <Col span={24}>
+                      <label className="selectLabel" htmlFor="DbBrandSelect">
+                        Select Brand
+                      </label>
+                      <Select
+                        id="DbBrandSelect"
+                        value={selectedDbBrand}
+                        className="mb-3"
+                        onChange={handleDbBrandChange}
+                        placeholder="Select a Brand"
+                        style={{ width: "100%" }}
+                        showSearch
+                        optionFilterProp="children"
+                        filterOption={(input, option) =>
+                          option.children
+                            .toLowerCase()
+                            .includes(input.toLowerCase())
+                        }
+                        allowClear
+                      >
+                        {availableBrands.map((brand) => (
+                          <Select.Option
+                            key={`db-brand-${brand}`}
+                            value={brand}
+                          >
+                            {brand}
+                          </Select.Option>
+                        ))}
+                      </Select>
                       <IMDatePicker
                         value={[startDate, endDate]}
                         handleChange={handleDateChange}
@@ -2133,7 +2222,7 @@ const IMHome = () => {
                         color={"orange"}
                         variant={"filled"}
                         handleClick={handleFetchData}
-                        disabled={fetchingData}
+                        disabled={fetchingData || !selectedDbBrand} // Replace disabled={fetchingData} with this
                       >
                         {fetchingData ? <Spin size="small" /> : "Get Data"}
                       </IMButton>
@@ -2188,7 +2277,7 @@ const IMHome = () => {
                         ))}
                       </Select>
                     </Col>
-                    <Col span={8}>
+                    {/* <Col span={8}>
                       <label className="selectLabel" htmlFor="BrandSelect">
                         Select Brands
                       </label>
@@ -2237,7 +2326,7 @@ const IMHome = () => {
                           </Select.Option>
                         ))}
                       </Select>
-                    </Col>
+                    </Col> */}
                     <Col span={8}>
                       <label className="selectLabel" htmlFor="StoreNameSelect">
                         Select Store Names
@@ -2288,7 +2377,7 @@ const IMHome = () => {
                         ))}
                       </Select>
                     </Col>
-                    <Col span={8}>
+                    <Col className="apply-filter-button-wrap" span={8}>
                       <IMButton
                         color={"blue"}
                         variant={"filled"}

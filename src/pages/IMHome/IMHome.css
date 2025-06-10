@@ -51,3 +51,9 @@ select {
 .text-green-700 {
   color: #047857;
 }
+
+.apply-filter-button-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

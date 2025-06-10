@@ -7,6 +7,7 @@ import { IMCard } from "../../component/IMCard";
 import * as XLSX from "xlsx";
 import moment from "moment";
 import { Col, Row, Select, Input, notification } from "antd";
+import { evaluate } from "mathjs";
 
 const { TextArea } = Input;
 
@@ -63,8 +64,36 @@ const IMUpload = () => {
     []
   );
   const [replaceColumn, setReplaceColumn] = useState(null);
+  const [brandOptions, setBrandOptions] = useState([]);
+  const [selectedBrand, setSelectedBrand] = useState(null);
+  const [pageSize, setPageSize] = useState(20); // New state for pageSize
   const ADMIN_PASSWORD = `${import.meta.env.VITE_DB_UPDATE_PSSWRD}`; // Replace with secure password or env variable
   const DEBUG = process.env.NODE_ENV === "development";
+  const isAdmin = localStorage.getItem("userRole") === "admin";
+  const allowedColumnsForNonAdmin = ["#1", "#2", "#3", "#4", "#5"];
+
+  // Fetch brand collections on component mount
+  useEffect(() => {
+    const fetchBrands = async () => {
+      try {
+        const response = await axios.get(
+          `${import.meta.env.VITE_API_URL}/api/brands`
+        );
+        const brands = response.data.map((brand) => ({
+          label: brand,
+          value: brand,
+        }));
+        setBrandOptions(brands);
+      } catch (error) {
+        console.error("Error fetching brands:", error);
+        notificationApi.error({
+          message: "Error",
+          description: "Failed to load brand options.",
+        });
+      }
+    };
+    fetchBrands();
+  }, [notificationApi]);
 
   const handleFileChange = (event) => {
     const selectedFiles = Array.from(event.target.files);
@@ -73,7 +102,7 @@ const IMUpload = () => {
   };
 
   const updateEditFormData = useCallback((name, value) => {
-    const [rowIndex, column] = name.split("_");
+    const { rowIndex, column } = JSON.parse(name);
     const startTime = performance.now();
     setEditFormData((prev) => {
       const newFormData = {
@@ -121,7 +150,10 @@ const IMUpload = () => {
                 editRows[originalIndex] &&
                 isAuthenticated
               ) {
-                const inputName = `${originalIndex}_${key}`;
+                const inputName = JSON.stringify({
+                  rowIndex: originalIndex,
+                  column: key,
+                });
                 return (
                   <MemoizedInput
                     name={inputName}
@@ -179,8 +211,10 @@ const IMUpload = () => {
           return column;
         });
 
+      // Filter column options based on user role
       const options = keys
         .filter((key) => key !== "_id")
+        .filter((key) => isAdmin || allowedColumnsForNonAdmin.includes(key))
         .map((key) => ({
           label: key,
           value: key,
@@ -189,7 +223,7 @@ const IMUpload = () => {
 
       return columns;
     },
-    []
+    [isAdmin]
   );
 
   const columns = useMemo(
@@ -198,8 +232,18 @@ const IMUpload = () => {
   );
 
   const handleUpload = async () => {
+    if (!selectedBrand) {
+      notificationApi.error({
+        message: "Error",
+        description: "Please select a brand.",
+      });
+      return;
+    }
     if (files.length === 0) {
-      alert("Please select at least one file to upload.");
+      notificationApi.error({
+        message: "Error",
+        description: "Please select at least one file to upload.",
+      });
       return;
     }
 
@@ -208,6 +252,7 @@ const IMUpload = () => {
     files.forEach((file) => {
       formData.append("files", file);
     });
+    formData.append("brand", selectedBrand);
 
     try {
       const response = await axios.post(
@@ -228,14 +273,23 @@ const IMUpload = () => {
         if (duplicateCount > 0) {
           message += ` Skipped ${duplicateCount} duplicate records.`;
         }
-        alert(message);
+        notificationApi.success({
+          message: "Success",
+          description: message,
+        });
       } else {
         console.error("Error uploading files:", response.data);
-        alert("Error uploading files. Please try again.");
+        notificationApi.error({
+          message: "Error",
+          description: "Error uploading files. Please try again.",
+        });
       }
     } catch (error) {
       console.error("Error uploading files:", error);
-      alert("Error uploading files. Please try again.");
+      notificationApi.error({
+        message: "Error",
+        description: "Error uploading files. Please try again.",
+      });
     }
 
     setUploading(false);
@@ -271,8 +325,18 @@ const IMUpload = () => {
   };
 
   const handleFetchData = () => {
+    if (!selectedBrand) {
+      notificationApi.error({
+        message: "Error",
+        description: "Please select a brand.",
+      });
+      return;
+    }
     if (!startDate || !endDate) {
-      alert("Please select a valid date range.");
+      notificationApi.error({
+        message: "Error",
+        description: "Please select a valid date range.",
+      });
       return;
     }
 
@@ -282,12 +346,15 @@ const IMUpload = () => {
     if (DEBUG) {
       console.log("Fetching data with start date:", formattedStartDate);
       console.log("Fetching data with end date:", formattedEndDate);
+      console.log("Start date (ISO):", startDate.toISOString());
+      console.log("End date (ISO):", endDate.toISOString());
     }
 
     axios
       .post(`${import.meta.env.VITE_API_URL}/api/data`, {
         startDate: formattedStartDate,
         endDate: formattedEndDate,
+        brand: selectedBrand,
       })
       .then((response) => {
         if (DEBUG) console.log("Fetched data:", response.data);
@@ -297,13 +364,17 @@ const IMUpload = () => {
       })
       .catch((error) => {
         console.error("Error fetching data:", error);
-        alert("Error fetching data. Please try again.");
+        notificationApi.error({
+          message: "Error",
+          description: "Error fetching data. Please try again.",
+        });
       });
   };
 
   const handleColumnSelect = (selected) => {
     setSelectedColumns(selected);
     if (DEBUG) console.log("Selected columns for download:", selected);
+    console.log("Selected columns for download:", selected);
   };
 
   const handleEditColumnSelect = (selected) => {
@@ -320,11 +391,7 @@ const IMUpload = () => {
       return;
     }
     const password = prompt("Enter admin password:");
-    if (DEBUG)
-      console.log(
-        "Authentication attempt, password entered:",
-        password === ADMIN_PASSWORD ? "Correct" : "Incorrect"
-      );
+    if (DEBUG) console.log("Authentication attempt, password entered:");
     if (password === ADMIN_PASSWORD) {
       if (DEBUG) console.log("Setting isAuthenticated to true");
       setIsAuthenticated(true);
@@ -347,10 +414,13 @@ const IMUpload = () => {
         sorter
       );
     setFilteredData(extra.currentDataSource || []);
+    setPageSize(pagination.pageSize); // Update pageSize when pagination changes
     if (DEBUG)
       console.log(
         "Updated filteredData:",
-        extra.currentDataSource?.slice(0, 2)
+        extra.currentDataSource?.slice(0, 2),
+        "New pageSize:",
+        pagination.pageSize
       );
   };
 
@@ -402,10 +472,20 @@ const IMUpload = () => {
         data[rowIndex]._id !== "null"
       ) {
         const updates = editFormData[rowIndex] || {};
-        if (Object.keys(updates).length > 0) {
+        const originalRow = data[rowIndex];
+        const changedUpdates = {};
+
+        // Only include fields that have changed
+        Object.keys(updates).forEach((key) => {
+          if (updates[key] !== (originalRow[key] ?? "")) {
+            changedUpdates[key] = updates[key];
+          }
+        });
+
+        if (Object.keys(changedUpdates).length > 0) {
           updatesToSend.push({
             id: data[rowIndex]._id,
-            updates,
+            updates: changedUpdates,
           });
         }
       }
@@ -421,17 +501,15 @@ const IMUpload = () => {
     }
 
     try {
-      const updatePromises = updatesToSend.map(({ id, updates }) => {
-        if (DEBUG) console.log("Sending update request:", { id, updates });
-        return axios.post(`${import.meta.env.VITE_API_URL}/api/data-update`, {
-          id,
-          updates,
-        });
-      });
+      const response = await axios.post(
+        `${import.meta.env.VITE_API_URL}/api/data-bulk-update`,
+        {
+          updates: updatesToSend,
+          brand: selectedBrand,
+        }
+      );
 
-      const responses = await Promise.all(updatePromises);
-      const allSuccessful = responses.every((res) => res.status === 200);
-      if (allSuccessful) {
+      if (response.status === 200) {
         alert("All changes saved successfully!");
         setEditRows({});
         setEditFormData({});
@@ -441,10 +519,15 @@ const IMUpload = () => {
       }
     } catch (error) {
       console.error("Error updating data:", error.response?.data || error);
-      alert(
-        "Error updating data: " +
-          (error.response?.data?.message || "Please try again.")
-      );
+      let errorMessage = "Error updating data: Please try again.";
+      if (error.code === "ERR_NETWORK") {
+        errorMessage =
+          "Network error: Check server connection or CORS configuration.";
+      } else if (error.response?.status === 413) {
+        errorMessage =
+          "Payload too large: Try editing fewer rows or contact support.";
+      }
+      alert(errorMessage);
     }
   };
 
@@ -503,6 +586,13 @@ const IMUpload = () => {
   };
 
   const addCalculatedColumn = async () => {
+    if (!selectedBrand) {
+      notificationApi.error({
+        message: "Error",
+        description: "Please select a brand.",
+      });
+      return;
+    }
     if (!calculatedColumnsFormula) {
       notificationApi.error({
         message: "Error",
@@ -543,71 +633,115 @@ const IMUpload = () => {
       return;
     }
 
-    const normalizedColumns = columnOptions.map((option) =>
-      option.value.toLowerCase()
-    );
-    const formulaColumns = calculatedColumnsFormula
-      .split(/([-+*/%()])/)
-      .map((part) => part.trim().toLowerCase())
-      .filter((part) => part && !/[-+*/%()]/.test(part));
+    const normalizedColumns = columnOptions.map((option) => ({
+      value: option.value,
+      lowerCase: option.value.toLowerCase(),
+    }));
 
-    if (formulaColumns.some((col) => !normalizedColumns.includes(col))) {
+    // Find all exact matches of column names in the formula
+    let formulaCopy = calculatedColumnsFormula;
+    const formulaColumns = [];
+    normalizedColumns.forEach(({ value }) => {
+      const escapedCol = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const regex = new RegExp(
+        `(^|[\\s+\\-*/%\\(])\\s*(${escapedCol})\\s*([\\s+\\-*/%\\)]|$)`,
+        "gi"
+      );
+      if (regex.test(formulaCopy)) {
+        formulaColumns.push({ value, lowerCase: value.toLowerCase() });
+        if (DEBUG) console.log(`Detected column in formula: ${value}`);
+      }
+    });
+
+    if (formulaColumns.length === 0) {
       notificationApi.error({
         message: "Error",
-        description: "Formula contains invalid column names.",
+        description: "Formula contains no valid column names.",
       });
+      if (DEBUG) console.log("No valid columns found in formula:", formulaCopy);
+      return;
+    }
+
+    // Validate that remaining formula contains only allowed characters
+    let remainingFormula = formulaCopy;
+    formulaColumns.forEach(({ value }) => {
+      const escapedCol = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const regex = new RegExp(
+        `(^|[\\s+\\-*/%\\(])\\s*(${escapedCol})\\s*([\\s+\\-*/%\\)]|$)`,
+        "gi"
+      );
+      remainingFormula = remainingFormula.replace(regex, "$1$3");
+      if (DEBUG) console.log(`After removing ${value}: ${remainingFormula}`);
+    });
+    if (!remainingFormula.match(/^[\s0-9+\-*/%.()]*$/)) {
+      notificationApi.error({
+        message: "Error",
+        description: "Formula contains invalid characters or column names.",
+      });
+      if (DEBUG) console.log("Invalid remaining formula:", remainingFormula);
       return;
     }
 
     const updates = data.map((row) => {
       try {
-        let formulaCopy = calculatedColumnsFormula.toLowerCase();
-        let isValid = true;
+        let expression = calculatedColumnsFormula;
         let resultIsString = false;
 
-        formulaColumns.forEach((col) => {
-          const colIndex = columnOptions.findIndex(
-            (option) => option.value.toLowerCase() === col
-          );
-          let value = row[columnOptions[colIndex].value];
-
-          if (value === null || value === undefined || value === "") {
-            value = 0;
-          } else if (typeof value === "string") {
-            const cleanedValue = value.replace(/[^0-9.-]/g, "");
+        // Replace column names with their values
+        formulaColumns.forEach(({ value }) => {
+          let cellValue = row[value];
+          if (
+            cellValue === null ||
+            cellValue === undefined ||
+            cellValue === ""
+          ) {
+            cellValue = 0;
+          } else if (typeof cellValue === "string") {
+            const cleanedValue = cellValue.replace(/[^0-9.-]/g, "");
             const parsedValue = parseFloat(cleanedValue);
             if (isNaN(parsedValue) || !cleanedValue.match(/^-?\d*\.?\d*$/)) {
               resultIsString = true;
-              value = `"${value}"`;
+              cellValue = `"${cellValue}"`;
             } else {
-              value = parsedValue;
+              cellValue = parsedValue;
             }
           }
 
-          const escapedCol = col.replace(/[.*+?^${}()|[\]\\#]/g, "\\$&");
-          formulaCopy = formulaCopy.replace(new RegExp(escapedCol, "g"), value);
+          const escapedCol = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const regex = new RegExp(
+            `(^|[\\s+\\-*/%\\(])\\s*(${escapedCol})\\s*([\\s+\\-*/%\\)]|$)`,
+            "g"
+          );
+          expression = expression.replace(regex, `$1${cellValue}$3`);
+          if (DEBUG)
+            console.log(
+              `Replaced ${value} with ${cellValue} in expression: ${expression}`
+            );
         });
 
         let result;
         if (resultIsString) {
-          formulaCopy = formulaCopy.replace(/"/g, "");
-          result = formulaCopy;
+          result = expression.replace(/"/g, "");
+          if (DEBUG) console.log(`String result for row ${row._id}: ${result}`);
         } else {
-          if (!formulaCopy.match(/^[0-9+\-*/%.()\s]+$/)) {
-            throw new Error(`Invalid formula syntax: "${formulaCopy}"`);
-          }
-          result = eval(formulaCopy);
-          if (isNaN(result) || !isFinite(result)) {
-            throw new Error(
-              `Formula evaluation resulted in invalid number: "${result}"`
-            );
+          try {
+            result = evaluate(expression);
+            if (isNaN(result) || !isFinite(result)) {
+              throw new Error(
+                `Formula evaluation resulted in invalid number: "${result}"`
+              );
+            }
+            if (DEBUG)
+              console.log(`Numeric result for row ${row._id}: ${result}`);
+          } catch (error) {
+            throw new Error(`Invalid formula syntax: "${expression}"`);
           }
         }
 
         return { _id: row._id, value: result };
       } catch (error) {
         console.warn(
-          `Error calculating value for row ${_id}: ${error.message}`
+          `Error calculating value for row ${row._id}: ${error.message}`
         );
         return { _id: row._id, value: 0 };
       }
@@ -620,6 +754,7 @@ const IMUpload = () => {
           column: columnToUpdate,
           updates,
           isNewColumn: !replaceColumn,
+          brand: selectedBrand,
         }
       );
 
@@ -647,7 +782,7 @@ const IMUpload = () => {
       });
     }
   };
-  const isAdmin = localStorage.getItem("userRole") === "admin";
+
   const isEditing = Object.keys(editRows).length > 0;
 
   return (
@@ -658,9 +793,17 @@ const IMUpload = () => {
           <Row gutter={[16, 16]}>
             <Col span={12}>
               <IMCard>
+                <Select
+                  size="large"
+                  placeholder="Select Brand"
+                  style={{ width: "100%", marginBottom: "10px" }}
+                  value={selectedBrand}
+                  onChange={setSelectedBrand}
+                  options={brandOptions}
+                  allowClear
+                />
                 <input
                   type="file"
-                  variant={"filled"}
                   onChange={handleFileChange}
                   accept=".xlsx,.xls"
                   multiple
@@ -668,7 +811,7 @@ const IMUpload = () => {
                 <IMButton
                   color={"blue"}
                   handleClick={handleUpload}
-                  disabled={uploading}
+                  disabled={uploading || !selectedBrand}
                   className={"mb-3"}
                 >
                   {uploading ? "Uploading..." : "Upload"}
@@ -678,12 +821,14 @@ const IMUpload = () => {
                   handleChange={handleDateChange}
                   format="MM-DD-YYYY"
                   rangePicker={true}
+                  disabled={!selectedBrand}
                 />
                 <IMButton
                   className={"mt-3"}
                   color={"orange"}
                   variant={"filled"}
                   handleClick={handleFetchData}
+                  disabled={!selectedBrand}
                 >
                   Fetch Data
                 </IMButton>
@@ -712,7 +857,7 @@ const IMUpload = () => {
               <IMCard title={"Filter"}>
                 <Select
                   mode="tags"
-                  size={"large"}
+                  size="large"
                   placeholder="Select columns to download"
                   value={selectedColumns}
                   onChange={handleColumnSelect}
@@ -724,14 +869,14 @@ const IMUpload = () => {
             </Col>
             {isAdmin && (
               <Col span={24}>
-                <IMCard title={"Create Calculated Column"}>
+                <IMCard title="Create Calculated Column">
                   <Row gutter={[16, 16]}>
                     <Col span={12}>
                       <Select
                         mode="multiple"
                         value={calculatedSelectedColumns}
                         onChange={handleCalculatedSelectedColumnsChange}
-                        placeholder={"Select Columns"}
+                        placeholder="Select Columns"
                         style={{ width: "100%" }}
                         options={columnOptions}
                       />
@@ -740,14 +885,14 @@ const IMUpload = () => {
                       <Input
                         value={calculatedColumnName}
                         onChange={handleCalculatedColumnNameChange}
-                        placeholder="Give a name to new column"
+                        placeholder="Enter name for new column"
                       />
                     </Col>
                     <Col span={12}>
                       <Select
                         value={replaceColumn}
                         onChange={handleReplaceColumnChange}
-                        placeholder={"Select column to replace (optional)"}
+                        placeholder="Select column to replace"
                         style={{ width: "100%" }}
                         options={columnOptions}
                         allowClear
@@ -764,8 +909,8 @@ const IMUpload = () => {
                     <Col span={24}>
                       <IMButton
                         handleClick={addCalculatedColumn}
-                        variant={"filled"}
-                        color={"purple"}
+                        variant="filled"
+                        color="purple"
                       >
                         Add Calculated Column
                       </IMButton>
@@ -784,7 +929,11 @@ const IMUpload = () => {
                     sticky={{ offsetScroll: 24 }}
                     onChange={handleTableChange}
                     rowKey={(record, index) => `${record._id}_${index}`}
-                    pagination={{ pageSize: 20 }}
+                    pagination={{
+                      pageSize,
+                      showSizeChanger: true,
+                      pageSizeOptions: ["10", "20", "50", "100"],
+                    }}
                   />
                 ) : (
                   <p>No data to display</p>
@@ -792,7 +941,7 @@ const IMUpload = () => {
                 <div style={{ marginTop: "16px", display: "flex", gap: "8px" }}>
                   <IMButton
                     color={isEditing ? "green" : "blue"}
-                    variant={"filled"}
+                    variant="filled"
                     handleClick={isEditing ? handleSaveAll : handleEdit}
                     disabled={
                       !isAuthenticated || (isEditing && !editColumns.length)
@@ -810,8 +959,8 @@ const IMUpload = () => {
                     </IMButton>
                   )}
                   <IMButton
-                    color={"green"}
-                    variant={"filled"}
+                    color="green"
+                    variant="filled"
                     handleClick={handleDownload}
                   >
                     Download
