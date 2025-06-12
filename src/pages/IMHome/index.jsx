@@ -1266,6 +1266,44 @@ const IMHome = () => {
     calculatedColumnNames,
   ]);
 
+  // Add this function near other utility functions like normalizeString
+  const getMinKeyValuePairs = (
+    data,
+    sourceColumns,
+    nonZeroColumns = [],
+    excludedFields = []
+  ) => {
+    if (!data.length || !sourceColumns.length) return 1; // Default to 1 if no data or columns
+    return data.reduce((min, row) => {
+      // Create an object from row array using sourceColumns
+      const rowObject = row.reduce((obj, value, index) => {
+        obj[sourceColumns[index]] = value;
+        return obj;
+      }, {});
+      // Count keys, considering nonZeroColumns and excluding specified fields
+      const count = Object.keys(rowObject).filter((key) => {
+        if (excludedFields.includes(key)) return false; // Skip excluded fields
+        if (nonZeroColumns.includes(key)) {
+          // For nonZeroColumns, only count if value is non-zero
+          const value = rowObject[key];
+          return value !== undefined && value !== null && value !== 0;
+        }
+        // For other columns, count if key exists
+        return true;
+      }).length;
+      return Math.min(min, count);
+    }, Infinity);
+  };
+  const minPairs = useMemo(
+    () =>
+      getMinKeyValuePairs(sourceData, sourceColumns, nonZeroColumns, [
+        "_id",
+        "StoreName",
+        "Date",
+        "Accumulated",
+      ]),
+    [sourceData, sourceColumns, nonZeroColumns]
+  );
   const addEmptyColumn = useCallback(() => {
     if (!emptyColumnName) {
       notificationApi.error({
@@ -2844,8 +2882,8 @@ const IMHome = () => {
                                   column data.
                                 </p>
                                 <p>
-                                  Picking a number from 1 to 5 is highly
-                                  recommended.
+                                  Picking a number from 1 to the minimum number
+                                  of data fields is recommended.
                                 </p>
                               </>
                             }
@@ -2875,7 +2913,7 @@ const IMHome = () => {
                                 style={{ width: "100%" }}
                               >
                                 {Array.from(
-                                  { length: sourceData.length },
+                                  { length: minPairs },
                                   (_, i) => i + 1
                                 ).map((position) => (
                                   <Select.Option
@@ -2917,7 +2955,7 @@ const IMHome = () => {
                                 style={{ width: "100%" }}
                               >
                                 {Array.from(
-                                  { length: sourceData.length },
+                                  { length: minPairs },
                                   (_, i) => i + 1
                                 ).map((position) => (
                                   <Select.Option
@@ -2941,7 +2979,7 @@ const IMHome = () => {
                           return (
                             <div
                               className="mb-2"
-                              key={`position-empty-${sourceColumn}`}
+                              key={`position-empty-${column}`}
                             >
                               <label className="block mb-1">
                                 {sourceColumn} (Mapped to {mappingColumn}{" "}
@@ -2959,7 +2997,7 @@ const IMHome = () => {
                                 style={{ width: "100%" }}
                               >
                                 {Array.from(
-                                  { length: sourceData.length },
+                                  { length: minPairs },
                                   (_, i) => i + 1
                                 ).map((position) => (
                                   <Select.Option

@@ -54,6 +54,6 @@ select {
 
 .apply-filter-button-wrap {
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: flex-end;
+  justify-content: flex-end;
 }
