@@ -316,6 +316,12 @@ const IMHome = () => {
   const [availableBrands, setAvailableBrands] = useState([]);
   const [selectedDbBrand, setSelectedDbBrand] = useState(null);
 
+  const [newIifColumnName, setNewIifColumnName] = useState("");
+
+  const handleNewIifColumnNameChange = useCallback((e) => {
+    setNewIifColumnName(e.target.value);
+  }, []);
+
   const fetchBrands = useCallback(async () => {
     try {
       const response = await axios.get(
@@ -1266,6 +1272,50 @@ const IMHome = () => {
     calculatedColumnNames,
   ]);
 
+  const addIifColumn = useCallback(() => {
+    if (!newIifColumnName) {
+      notificationApi.error({
+        message: "Error",
+        description: "Please provide a name for the new IIF column.",
+      });
+      return;
+    }
+
+    const normalizedNewColumn = normalizeColumnName(newIifColumnName);
+    if (iifColumns.includes(newIifColumnName)) {
+      notificationApi.error({
+        message: "Error",
+        description: `Column "${newIifColumnName}" already exists in the IIF template.`,
+      });
+      return;
+    }
+
+    // Add column to iifColumns at second-to-last position
+    const newIifColumns = [...iifColumns];
+    newIifColumns.splice(iifColumns.length - 1, 0, newIifColumnName);
+    setIifColumns(newIifColumns);
+
+    // Add column to iifHeaderRows at second-to-last position
+    const newIifHeaderRows = iifHeaderRows.map((row) => {
+      const newRow = [...row];
+      newRow.splice(row.length - 1, 0, newIifColumnName);
+      return newRow;
+    });
+    setIifHeaderRows(newIifHeaderRows);
+
+    setNewIifColumnName("");
+    notificationApi.success({
+      message: "Success",
+      description: `IIF column "${newIifColumnName}" added successfully.`,
+    });
+  }, [
+    newIifColumnName,
+    iifColumns,
+    iifHeaderRows,
+    normalizeColumnName,
+    notificationApi,
+  ]);
+
   // Add this function near other utility functions like normalizeString
   const getMinKeyValuePairs = (
     data,
@@ -1958,6 +2008,19 @@ const IMHome = () => {
       const zip = new JSZip();
       const totalColumns = iifHeaderRows[0] ? iifHeaderRows[0].length : 0;
 
+      // Determine if we need to organize by state
+      const organizeByState = selectedStates.length > 0;
+
+      // Map stores to their states
+      const storeToStateMap = new Map();
+      if (organizeByState) {
+        bmData.forEach((bm) => {
+          if (bm.POS_COMPANY_NAME && bm.State) {
+            storeToStateMap.set(bm.POS_COMPANY_NAME, bm.State);
+          }
+        });
+      }
+
       // Generate IIF files for each store
       const storeNames = Object.keys(groupedByStore);
       for (var j = 0; j < storeNames.length; j++) {
@@ -2133,7 +2196,20 @@ const IMHome = () => {
           .join("\n");
         var sanitizedStoreName = storeName.replace(/[^a-zA-Z0-9-_ ]/g, "_");
         var fileName = sanitizedStoreName + ".iif";
-        zip.file(fileName, iifContent);
+
+        if (organizeByState) {
+          // Get the state for this store
+          var state = storeToStateMap.get(storeName) || "Unknown";
+          // Sanitize state name for folder
+          var sanitizedState = state.replace(/[^a-zA-Z0-9-_ ]/g, "_");
+          // Create or get state folder in zip
+          var stateFolder = zip.folder(sanitizedState);
+          // Add IIF file to state folder
+          stateFolder.file(fileName, iifContent);
+        } else {
+          // Add IIF file directly to zip root
+          zip.file(fileName, iifContent);
+        }
       }
 
       // Generate and download zip file
@@ -2187,7 +2263,9 @@ const IMHome = () => {
     calculatedColumnIsCustomString,
     extractNumber,
     formatName,
-    saveFormat, // Keep saveFormat in dependencies
+    saveFormat,
+    selectedStates, // Add selectedStates to dependencies
+    bmData, // Add bmData to dependencies
   ]);
 
   // Update UI to reflect normalized column mappings
@@ -2622,6 +2700,37 @@ const IMHome = () => {
                           </Select.Option>
                         ))}
                       </IMSelect>
+                    </Col>
+                    <Col span={24}>
+                      <label
+                        className="selectLabel"
+                        htmlFor="NewIifColumnInput"
+                      >
+                        Add New IIF Column
+                      </label>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                        }}
+                      >
+                        <Input
+                          id="NewIifColumnInput"
+                          value={newIifColumnName}
+                          onChange={handleNewIifColumnNameChange}
+                          placeholder="Enter new IIF column name"
+                          style={{ flex: 1 }}
+                        />
+                        <IMButton
+                          handleClick={addIifColumn}
+                          variant="filled"
+                          color="purple"
+                          disabled={!iifColumns.length || !newIifColumnName}
+                        >
+                          Add Column to IIF
+                        </IMButton>
+                      </div>
                     </Col>
                   </Row>
                 </IMCard>

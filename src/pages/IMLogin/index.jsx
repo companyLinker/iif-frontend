@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Input, Button } from "antd";
+import { Input } from "antd";
 import { IMButton } from "../../component/IMButton";
 
 const IMLogin = () => {
@@ -11,10 +11,10 @@ const IMLogin = () => {
   const location = useLocation();
 
   const handleLogin = () => {
-    const adminUsername = `${import.meta.env.VITE_ADMIN_USR}`; // "s2"
-    const adminPassword = `${import.meta.env.VITE_ADMIN_PSSWRD}`; // "233"
-    const userUsername = `${import.meta.env.VITE_USER_USR}`; // "3333"
-    const userPassword = `${import.meta.env.VITE_USER_PSSWRD}`; // "21101"
+    const adminUsername = `${import.meta.env.VITE_ADMIN_USR}`;
+    const adminPassword = `${import.meta.env.VITE_ADMIN_PSSWRD}`;
+    const userUsername = `${import.meta.env.VITE_USER_USR}`;
+    const userPassword = `${import.meta.env.VITE_USER_PSSWRD}`;
 
     let role = null;
 
@@ -27,11 +27,9 @@ const IMLogin = () => {
       return;
     }
 
-    // Store authentication and role
     localStorage.setItem("isAuthenticated", "true");
     localStorage.setItem("userRole", role);
-
-    // Redirect to the originally requested page or home
+    localStorage.setItem("lastActivity", Date.now().toString());
     const from = location.state?.from?.pathname || "/";
     navigate(from);
   };
@@ -51,11 +49,11 @@ const IMLogin = () => {
         style={{ marginBottom: "20px" }}
       />
       <IMButton
-        variant={"solid"}
-        size={"large"}
+        variant="solid"
+        size="large"
         handleClick={handleLogin}
         style={{ width: "100%" }}
-        color={"green"}
+        color="green"
       >
         Login
       </IMButton>

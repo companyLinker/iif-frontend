@@ -70,6 +70,7 @@ const IMUpload = () => {
   const [selectedFormula, setSelectedFormula] = useState(null);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
+  const [calculating, setCalculating] = useState(false); // New state for loader
   const ADMIN_PASSWORD = `${import.meta.env.VITE_DB_UPDATE_PSSWRD}`;
   const DEBUG = process.env.NODE_ENV === "development";
   const isAdmin = localStorage.getItem("userRole") === "admin";
@@ -576,6 +577,17 @@ const IMUpload = () => {
       })
       .then((response) => {
         if (DEBUG) console.log("Fetched data:", response.data);
+        if (!response.data || response.data.length === 0) {
+          notificationApi.warning({
+            message: "Warning",
+            description: "No data found for the selected brand and date range.",
+          });
+          setData([]);
+          setEditRows({});
+          setEditFormData({});
+          checkTransactions();
+          return;
+        }
         setData(response.data);
         setEditRows({});
         setEditFormData({});
@@ -965,6 +977,8 @@ const IMUpload = () => {
       return;
     }
 
+    setCalculating(true); // Start loader
+
     const updates = data.map((row) => {
       try {
         let expression = calculatedColumnsFormula;
@@ -1088,6 +1102,8 @@ const IMUpload = () => {
           error.response?.data?.message ||
           "Error adding calculated column or saving formula. Please try again.",
       });
+    } finally {
+      setCalculating(false); // Stop loader
     }
   };
 
@@ -1308,7 +1324,8 @@ const IMUpload = () => {
                         handleClick={addCalculatedColumn}
                         variant="filled"
                         color="purple"
-                        disabled={!!selectedFormula}
+                        disabled={!!selectedFormula || calculating}
+                        loading={calculating} // Add loader
                       >
                         Add Calculated Column
                       </IMButton>
