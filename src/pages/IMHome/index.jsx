@@ -288,8 +288,15 @@ const IMHome = () => {
   const [fetchingData, setFetchingData] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [previewData, setPreviewData] = useState([]);
-  const [memoMappings, setMemoMappings] = useState({});
-  const [memoMappingType, setMemoMappingType] = useState("Keys");
+  const [memoMappingSets, setMemoMappingSets] = useState([
+    {
+      id: Date.now(),
+      memoMappings: {},
+      memoMappingType: "Keys",
+      memoSourceIifColumn: null,
+      memoTargetIifColumn: null,
+    },
+  ]);
   const [states, setStates] = useState([]);
   const [brands, setBrands] = useState([]);
   const [storeNames, setStoreNames] = useState([]);
@@ -720,6 +727,16 @@ const IMHome = () => {
           .map((col) => col.trim())
           .filter((col) => col !== "" && !col.startsWith("!"));
         setIifColumns(columns);
+        // Reset MEMO mapping sets to prevent stale values
+        setMemoMappingSets([
+          {
+            id: Date.now(),
+            memoMappings: {},
+            memoMappingType: "Keys",
+            memoSourceIifColumn: null,
+            memoTargetIifColumn: null,
+          },
+        ]);
       }
     };
     reader.readAsText(file);
@@ -802,6 +819,92 @@ const IMHome = () => {
 
   const handleCoaTargetIifColumnChange = useCallback((value) => {
     setCoaTargetIifColumn(value);
+  }, []);
+  const addMemoMappingSet = useCallback(() => {
+    setMemoMappingSets((prev) => [
+      ...prev,
+      {
+        id: Date.now(),
+        memoMappings: {},
+        memoMappingType: "Keys",
+        memoSourceIifColumn: null,
+        memoTargetIifColumn: null,
+      },
+    ]);
+  }, []);
+
+  const removeMemoMappingSet = useCallback(
+    (id) => {
+      setMemoMappingSets((prev) => {
+        if (prev.length === 1) {
+          notificationApi.warning({
+            message: "Warning",
+            description: "Cannot remove the last MEMO mapping set.",
+          });
+          return prev;
+        }
+        return prev.filter((set) => set.id !== id);
+      });
+    },
+    [notificationApi]
+  );
+
+  const handleMemoMappingsChange = useCallback(
+    (id, file) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const text = event.target.result;
+        const workbook = XLSX.read(text, { type: "binary" });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const data = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+        const mappings = {};
+        data.slice(1).forEach((row) => {
+          const originalName = row[0]?.trim();
+          const newName = row[1]?.trim();
+          if (originalName && newName) {
+            const normalizedKey = normalizeStoreName(originalName);
+            mappings[normalizedKey] = newName;
+          }
+        });
+        setMemoMappingSets((prev) =>
+          prev.map((set) =>
+            set.id === id ? { ...set, memoMappings: mappings } : set
+          )
+        );
+      };
+      reader.readAsBinaryString(file);
+    },
+    [normalizeStoreName]
+  );
+
+  const handleMemoSourceIifColumnChange = useCallback((id, value) => {
+    setMemoMappingSets((prev) =>
+      prev.map((set) =>
+        set.id === id ? { ...set, memoSourceIifColumn: value } : set
+      )
+    );
+  }, []);
+
+  const handleMemoTargetIifColumnChange = useCallback(
+    (id, value) => {
+      setMemoMappingSets((prev) =>
+        prev.map((set) =>
+          set.id === id ? { ...set, memoTargetIifColumn: value } : set
+        )
+      );
+      // Verify state update
+      setTimeout(() => {}, 0);
+    },
+    [memoMappingSets]
+  );
+
+  const handleMemoMappingTypeChange = useCallback((id, value) => {
+    setMemoMappingSets((prev) =>
+      prev.map((set) =>
+        set.id === id ? { ...set, memoMappingType: value } : set
+      )
+    );
   }, []);
 
   const handleBankTargetIifColumnChange = useCallback((value) => {
@@ -1433,7 +1536,7 @@ const IMHome = () => {
       const indicesToRemove = sourceColumns
         .map((col, idx) => (calculatedColumnNames.includes(col) ? idx : -1))
         .filter((idx) => idx !== -1)
-        .sort((a, b) => b - a); // Sort descending to remove from end
+        .sort((a, b) => b - a);
       let tempSourceColumns = [...sourceColumns];
       let tempSourceData = sourceData.map((row) => [...row]);
 
@@ -1462,7 +1565,22 @@ const IMHome = () => {
       setCoaTargetIifColumn(format.coaTargetIifColumn || null);
       setBankTargetIifColumn(format.bankTargetIifColumn || null);
       setStoreSplitIifColumn(format.storeSplitIifColumn || null);
-      setMemoMappingType(format.memoMappingType || "Keys");
+      setMemoMappingSets(
+        format.memoMappingSets?.length
+          ? format.memoMappingSets.map((set) => ({
+              ...set,
+              id: Date.now() + Math.random(), // Ensure unique IDs
+            }))
+          : [
+              {
+                id: Date.now(),
+                memoMappings: {},
+                memoMappingType: "Keys",
+                memoSourceIifColumn: null,
+                memoTargetIifColumn: null,
+              },
+            ]
+      );
       setSelectedStates(format.selectedStates || []);
       setSelectedBrands(format.selectedBrands || []);
       setSelectedStoreNames(format.selectedStoreNames || []);
@@ -1676,7 +1794,15 @@ const IMHome = () => {
         setCoaTargetIifColumn(null);
         setBankTargetIifColumn(null);
         setStoreSplitIifColumn(null);
-        setMemoMappingType("Keys");
+        setMemoMappingSets([
+          {
+            id: Date.now(),
+            memoMappings: {},
+            memoMappingType: "Keys",
+            memoSourceIifColumn: null,
+            memoTargetIifColumn: null,
+          },
+        ]);
         setSelectedStates([]);
         setSelectedBrands([]);
         setSelectedStoreNames([]);
@@ -1715,7 +1841,8 @@ const IMHome = () => {
           coaTargetIifColumn !== (format.coaTargetIifColumn || null) ||
           bankTargetIifColumn !== (format.bankTargetIifColumn || null) ||
           storeSplitIifColumn !== (format.storeSplitIifColumn || null) ||
-          memoMappingType !== (format.memoMappingType || "Keys") ||
+          JSON.stringify(memoMappingSets) !==
+            JSON.stringify(format.memoMappingSets || []) ||
           JSON.stringify(selectedStates) !==
             JSON.stringify(format.selectedStates || []) ||
           JSON.stringify(selectedBrands) !==
@@ -1741,7 +1868,7 @@ const IMHome = () => {
     coaTargetIifColumn,
     bankTargetIifColumn,
     storeSplitIifColumn,
-    memoMappingType,
+    memoMappingSets,
     selectedStates,
     selectedBrands,
     selectedStoreNames,
@@ -1776,7 +1903,7 @@ const IMHome = () => {
         coaTargetIifColumn,
         bankTargetIifColumn,
         storeSplitIifColumn,
-        memoMappingType,
+        memoMappingSets,
         selectedStates,
         selectedBrands,
         selectedStoreNames,
@@ -1784,7 +1911,7 @@ const IMHome = () => {
         calculatedColumns: calculatedColumnDefinitions.map((col) => ({
           name: col.name,
           formula: col.formula,
-          selectedColumns: col.selectedColumns || [], // Include selected columns
+          selectedColumns: col.selectedColumns || [],
           calculationType: col.calculationType,
         })),
       };
@@ -1870,7 +1997,7 @@ const IMHome = () => {
       coaTargetIifColumn,
       bankTargetIifColumn,
       storeSplitIifColumn,
-      memoMappingType,
+      memoMappingSets,
       selectedStates,
       selectedBrands,
       selectedStoreNames,
@@ -1966,12 +2093,10 @@ const IMHome = () => {
             row.sourceRowIndex = originalIndex;
           });
         });
-        allMappedData.push.apply(allMappedData, mappedChunk); // Avoid spread operator
+        allMappedData.push(...mappedChunk);
       }
 
-      const flattenedData = allMappedData.reduce(function (acc, val) {
-        return acc.concat(val);
-      }, []); // Avoid flat()
+      const flattenedData = allMappedData.flat();
       const filledData = fillMissingDates(flattenedData);
       const convertedData = convertDates(filledData);
 
@@ -2023,98 +2148,113 @@ const IMHome = () => {
 
       // Generate IIF files for each store
       const storeNames = Object.keys(groupedByStore);
-      for (var j = 0; j < storeNames.length; j++) {
-        var storeName = storeNames[j];
-        var storeGroups = groupedByStore[storeName];
+      for (let j = 0; j < storeNames.length; j++) {
+        const storeName = storeNames[j];
+        let storeGroups = groupedByStore[storeName];
 
         storeGroups = storeGroups.map(function (group) {
           return group.map(function (row) {
-            var updatedRow = Object.assign({}, row);
+            const updatedRow = { ...row };
 
-            // Handle COA mapping
-            var originalCoaValue = null;
-            if (
-              coaTargetIifColumn &&
-              updatedRow[coaTargetIifColumn] !== undefined
-            ) {
-              originalCoaValue = updatedRow[coaTargetIifColumn];
-            }
+            // Handle MEMO mapping
+            memoMappingSets.forEach((set, index) => {
+              const {
+                memoSourceIifColumn,
+                memoTargetIifColumn,
+                memoMappings,
+                memoMappingType,
+              } = set;
 
-            if (
-              originalCoaValue &&
-              typeof originalCoaValue === "string" &&
-              originalCoaValue.trim() !== ""
-            ) {
-              var normalizedCoaValue = normalizeStoreName(originalCoaValue);
-              var memoKeys = Object.keys(memoMappings);
-              var matchedKey = memoKeys.find(function (key) {
-                return normalizeStoreName(key) === normalizedCoaValue;
-              });
-              if (matchedKey) {
-                var memoValue;
-                if (memoMappingType === "Keys") {
-                  memoValue = memoMappings[matchedKey];
-                } else if (memoMappingType === "Values") {
-                  var mappedColumnName = memoMappings[matchedKey];
-                  var normalizedMappedColumn =
-                    normalizeColumnName(mappedColumnName);
-                  var columnIndex = sourceColumns.findIndex(function (col) {
-                    return normalizeColumnName(col) === normalizedMappedColumn;
-                  });
-                  if (columnIndex !== -1) {
-                    var sourceRowIndex = row.sourceRowIndex;
-                    memoValue =
-                      sourceRowIndex !== undefined && sourceData[sourceRowIndex]
-                        ? sourceData[sourceRowIndex][columnIndex]
-                        : "";
-                  } else {
-                    memoValue = "";
-                  }
-                } else if (memoMappingType === "Both") {
-                  var mappedColumnName = memoMappings[matchedKey];
-                  var normalizedMappedColumn =
-                    normalizeColumnName(mappedColumnName);
-                  var columnIndex = sourceColumns.findIndex(function (col) {
-                    return normalizeColumnName(col) === normalizedMappedColumn;
-                  });
-                  if (columnIndex !== -1) {
-                    var sourceRowIndex = row.sourceRowIndex;
-                    memoValue =
-                      sourceRowIndex !== undefined && sourceData[sourceRowIndex]
-                        ? sourceData[sourceRowIndex][columnIndex]
-                        : memoMappings[matchedKey];
-                  } else {
+              let originalMemoValue = null;
+              if (
+                memoSourceIifColumn &&
+                memoTargetIifColumn &&
+                updatedRow[memoSourceIifColumn] !== undefined
+              ) {
+                originalMemoValue = updatedRow[memoSourceIifColumn];
+              }
+
+              if (
+                originalMemoValue &&
+                typeof originalMemoValue === "string" &&
+                originalMemoValue.trim() !== ""
+              ) {
+                const normalizedMemoValue =
+                  normalizeStoreName(originalMemoValue);
+                const matchedKey = Object.keys(memoMappings).find(
+                  (key) => normalizeStoreName(key) === normalizedMemoValue
+                );
+                if (matchedKey) {
+                  let memoValue;
+                  if (memoMappingType === "Keys") {
                     memoValue = memoMappings[matchedKey];
+                  } else if (memoMappingType === "Values") {
+                    const mappedColumnName = memoMappings[matchedKey];
+                    const normalizedMappedColumn =
+                      normalizeColumnName(mappedColumnName);
+                    const columnIndex = sourceColumns.findIndex(
+                      (col) =>
+                        normalizeColumnName(col) === normalizedMappedColumn
+                    );
+                    if (columnIndex !== -1) {
+                      const sourceRowIndex = row.sourceRowIndex;
+                      memoValue =
+                        sourceRowIndex !== undefined &&
+                        sourceData[sourceRowIndex]
+                          ? sourceData[sourceRowIndex][columnIndex]
+                          : "";
+                    } else {
+                      memoValue = "";
+                    }
+                  } else if (memoMappingType === "Both") {
+                    const mappedColumnName = memoMappings[matchedKey];
+                    const normalizedMappedColumn =
+                      normalizeColumnName(mappedColumnName);
+                    const columnIndex = sourceColumns.findIndex(
+                      (col) =>
+                        normalizeColumnName(col) === normalizedMappedColumn
+                    );
+                    if (columnIndex !== -1) {
+                      const sourceRowIndex = row.sourceRowIndex;
+                      memoValue =
+                        sourceRowIndex !== undefined &&
+                        sourceData[sourceRowIndex]
+                          ? sourceData[sourceRowIndex][columnIndex]
+                          : memoMappings[matchedKey];
+                    } else {
+                      memoValue = memoMappings[matchedKey];
+                    }
                   }
-                }
 
-                if (memoValue && iifColumns.includes("MEMO")) {
-                  var currentMemo = updatedRow["MEMO"] || "";
-                  updatedRow["MEMO"] = currentMemo
-                    ? currentMemo + " " + memoValue
-                    : memoValue;
-                } else if (!iifColumns.includes("MEMO")) {
-                  notificationApi.warning({
-                    message: "Warning",
-                    description:
-                      "MEMO column not found in IIF template. MEMO mapping will be skipped.",
-                  });
+                  if (memoValue && iifColumns.includes(memoTargetIifColumn)) {
+                    const currentMemo = updatedRow[memoTargetIifColumn] || "";
+                    updatedRow[memoTargetIifColumn] = currentMemo
+                      ? `${currentMemo} ${memoValue}`
+                      : memoValue;
+                  } else if (!iifColumns.includes(memoTargetIifColumn)) {
+                    notificationApi.warning({
+                      message: "Warning",
+                      description: `Target MEMO column "${memoTargetIifColumn}" in MEMO mapping set ${
+                        index + 1
+                      } not found in IIF template. MEMO mapping will be skipped.`,
+                    });
+                  }
                 }
               }
-            }
+            });
 
             // Apply COA mappings
             if (
               coaTargetIifColumn &&
               updatedRow[coaTargetIifColumn] !== undefined
             ) {
-              var value = updatedRow[coaTargetIifColumn];
+              const value = updatedRow[coaTargetIifColumn];
               if (typeof value === "string") {
-                var normalizedValue = normalizeStoreName(value);
-                var originalKeys = Object.keys(coaMappings);
-                for (var k = 0; k < originalKeys.length; k++) {
-                  var key = originalKeys[k];
-                  var normalizedKey = normalizeStoreName(key);
+                const normalizedValue = normalizeStoreName(value);
+                const originalKeys = Object.keys(coaMappings);
+                for (let k = 0; k < originalKeys.length; k++) {
+                  const key = originalKeys[k];
+                  const normalizedKey = normalizeStoreName(key);
                   if (normalizedValue === normalizedKey) {
                     updatedRow[coaTargetIifColumn] = coaMappings[key];
                     break;
@@ -2128,30 +2268,63 @@ const IMHome = () => {
               bankTargetIifColumn &&
               updatedRow[bankTargetIifColumn] !== undefined
             ) {
-              var value = updatedRow[bankTargetIifColumn];
-              if (typeof value === "string" && value.trim() !== "") {
-                var normalizedValue = normalizeStoreName(value);
-                var mappedValue = bankMappingLookup.get(normalizedValue);
+              let value = updatedRow[bankTargetIifColumn];
+              // Convert value to string and trim to handle numbers or whitespace
+              value = value != null ? value.toString().trim() : "";
+
+              if (value !== "") {
+                const normalizedValue = normalizeStoreName(value);
+                let mappedValue = bankMappingLookup.get(normalizedValue);
 
                 if (!mappedValue) {
-                  var numberMatch = extractNumber(value);
-                  if (numberMatch) {
-                    var entries = bankMappingLookup.entries();
-                    for (var entry of entries) {
-                      var key = entry[0];
-                      var mappedColName = entry[1];
-                      var posNumber = extractNumber(key);
-                      if (posNumber && posNumber === numberMatch) {
-                        mappedValue = mappedColName;
-                        break;
+                  // Check if the value is a direct number (e.g., "9999")
+                  if (/^\d+$/.test(value)) {
+                    const directNumber = value;
+                    const bmEntry = bmData.find((bm) => {
+                      if (!bm.Storeno_) return false;
+                      // Normalize Storeno_ for comparison
+                      const storeno = bm.Storeno_.toString().trim();
+                      const isMatch = storeno === directNumber;
+
+                      return isMatch;
+                    });
+                    if (
+                      bmEntry &&
+                      (bmEntry.mapped_col_name || bmEntry.mappedColName)
+                    ) {
+                      mappedValue =
+                        bmEntry.mapped_col_name || bmEntry.mappedColName;
+                    } else {
+                    }
+                  }
+
+                  // If no match from direct number, try extracting number from format like "abc xyz - 1234"
+                  if (!mappedValue) {
+                    const numberMatch = extractNumber(value);
+                    if (numberMatch) {
+                      const bmEntry = bmData.find(
+                        (bm) =>
+                          bm.POS_COMPANY_NAME &&
+                          extractNumber(bm.POS_COMPANY_NAME) === numberMatch
+                      );
+                      if (
+                        bmEntry &&
+                        (bmEntry.mapped_col_name || bmEntry.mappedColName)
+                      ) {
+                        mappedValue =
+                          bmEntry.mapped_col_name || bmEntry.mappedColName;
+                      } else {
                       }
                     }
                   }
+                } else {
                 }
 
                 if (mappedValue) {
                   updatedRow[bankTargetIifColumn] = mappedValue;
+                } else {
                 }
+              } else {
               }
             }
 
@@ -2160,13 +2333,13 @@ const IMHome = () => {
           });
         });
 
-        var storeWorksheetData = iifHeaderRows.concat([["!ENDTRNS"]]);
+        let storeWorksheetData = iifHeaderRows.concat([["!ENDTRNS"]]);
 
         storeGroups.forEach(function (group) {
           if (group.length === 0) return;
 
-          var firstRow = group[0];
-          var trnsRow = Array(totalColumns).fill("");
+          const firstRow = group[0];
+          const trnsRow = Array(totalColumns).fill("");
           trnsRow[0] = "TRNS";
           iifColumns.forEach(function (col, colIndex) {
             trnsRow[colIndex + 1] =
@@ -2174,8 +2347,8 @@ const IMHome = () => {
           });
           storeWorksheetData.push(trnsRow);
 
-          for (var i = 1; i < group.length; i++) {
-            var splRow = Array(totalColumns).fill("");
+          for (let i = 1; i < group.length; i++) {
+            const splRow = Array(totalColumns).fill("");
             splRow[0] = "SPL";
             iifColumns.forEach(function (col, colIndex) {
               splRow[colIndex + 1] =
@@ -2184,26 +2357,26 @@ const IMHome = () => {
             storeWorksheetData.push(splRow);
           }
 
-          var endRow = Array(totalColumns).fill("");
+          const endRow = Array(totalColumns).fill("");
           endRow[0] = "ENDTRNS";
           storeWorksheetData.push(endRow);
         });
 
-        var iifContent = storeWorksheetData
+        const iifContent = storeWorksheetData
           .map(function (row) {
             return row.join("\t");
           })
           .join("\n");
-        var sanitizedStoreName = storeName.replace(/[^a-zA-Z0-9-_ ]/g, "_");
-        var fileName = sanitizedStoreName + ".iif";
+        const sanitizedStoreName = storeName.replace(/[^a-zA-Z0-9-_ ]/g, "_");
+        const fileName = sanitizedStoreName + ".iif";
 
         if (organizeByState) {
           // Get the state for this store
-          var state = storeToStateMap.get(storeName) || "Unknown";
+          const state = storeToStateMap.get(storeName) || "Unknown";
           // Sanitize state name for folder
-          var sanitizedState = state.replace(/[^a-zA-Z0-9-_ ]/g, "_");
+          const sanitizedState = state.replace(/[^a-zA-Z0-9-_ ]/g, "_");
           // Create or get state folder in zip
-          var stateFolder = zip.folder(sanitizedState);
+          const stateFolder = zip.folder(sanitizedState);
           // Add IIF file to state folder
           stateFolder.file(fileName, iifContent);
         } else {
@@ -2213,9 +2386,9 @@ const IMHome = () => {
       }
 
       // Generate and download zip file
-      var content = await zip.generateAsync({ type: "blob" });
-      var link = document.createElement("a");
-      var url = URL.createObjectURL(content);
+      const content = await zip.generateAsync({ type: "blob" });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(content);
       link.setAttribute("href", url);
       link.setAttribute("download", "store_iif_files.zip");
       link.style.visibility = "hidden";
@@ -2249,8 +2422,7 @@ const IMHome = () => {
     coaMappings,
     bankTargetIifColumn,
     bankMappingLookup,
-    memoMappings,
-    memoMappingType,
+    memoMappingSets,
     normalizeStoreName,
     normalizeColumnName,
     notificationApi,
@@ -2264,8 +2436,8 @@ const IMHome = () => {
     extractNumber,
     formatName,
     saveFormat,
-    selectedStates, // Add selectedStates to dependencies
-    bmData, // Add bmData to dependencies
+    selectedStates,
+    bmData,
   ]);
 
   // Update UI to reflect normalized column mappings
@@ -2576,16 +2748,6 @@ const IMHome = () => {
                         Upload COA Mapping Sheet
                       </IMUpload>
                     </Col>
-                    <Col span={8}>
-                      <IMUpload
-                        handleChange={({ file }) => parseMemoMappingFile(file)}
-                        accept=".xlsx,.xls,.csv"
-                        variant="solid"
-                        color="default"
-                      >
-                        Upload MEMO Mapping Sheet
-                      </IMUpload>
-                    </Col>
                     {isAdmin && (
                       <>
                         <Col span={8}>
@@ -2665,17 +2827,6 @@ const IMHome = () => {
                             ))}
                           </IMSelect>
                         </Col>
-                        <Col span={8}>
-                          <label>MEMO Mapping Type:  </label>
-                          <Radio.Group
-                            value={memoMappingType}
-                            onChange={(e) => setMemoMappingType(e.target.value)}
-                          >
-                            <Radio value="Keys">Keys</Radio>
-                            <Radio value="Values">Values</Radio>
-                            <Radio value="Both">Both</Radio>
-                          </Radio.Group>
-                        </Col>
                       </>
                     )}
 
@@ -2735,6 +2886,125 @@ const IMHome = () => {
                   </Row>
                 </IMCard>
               </Col>
+
+              <Col span={24}>
+                <IMCard
+                  extra={
+                    <IMButton
+                      handleClick={addMemoMappingSet}
+                      variant="solid"
+                      color="green"
+                      style={{ marginTop: "24px" }}
+                    >
+                      + Add MEMO Mapping Set
+                    </IMButton>
+                  }
+                >
+                  <Row gutter={[16, 16]} className="memo-mapping-wrap">
+                    {memoMappingSets.map((set, index) => (
+                      <React.Fragment key={set.id}>
+                        <Col span={6}>
+                          <IMUpload
+                            handleChange={({ file }) =>
+                              handleMemoMappingsChange(set.id, file)
+                            }
+                            accept=".xlsx,.xls,.csv"
+                            variant="solid"
+                            color="default"
+                          >
+                            Upload MEMO Mapping Sheet {index + 1}
+                          </IMUpload>
+                        </Col>
+                        <Col span={6}>
+                          <label
+                            className="selectLabel"
+                            htmlFor={`MemoSourceMappingSelect-${set.id}`}
+                          >
+                            Select the IIF column (MEMO Source {index + 1})
+                          </label>
+                          <IMSelect
+                            id={`MemoSourceMappingSelect-${set.id}`}
+                            value={set.memoSourceIifColumn}
+                            handleChange={(value) =>
+                              handleMemoSourceIifColumnChange(set.id, value)
+                            }
+                            placeholder={`Select the IIF column (MEMO Source ${
+                              index + 1
+                            })`}
+                            disabled={!iifColumns.length}
+                            style={{ width: "100%" }}
+                          >
+                            {iifColumns.map((iifColumn) => (
+                              <Select.Option
+                                key={`iif-memo-source-${set.id}-${iifColumn}`}
+                                value={iifColumn}
+                              >
+                                {iifColumn}
+                              </Select.Option>
+                            ))}
+                          </IMSelect>
+                        </Col>
+                        <Col span={6}>
+                          <label
+                            className="selectLabel"
+                            htmlFor={`MemoTargetMappingSelect-${set.id}`}
+                          >
+                            Select the IIF column (MEMO Target {index + 1})
+                          </label>
+                          <IMSelect
+                            id={`MemoTargetMappingSelect-${set.id}`}
+                            value={set.memoTargetIifColumn}
+                            handleChange={(value) =>
+                              handleMemoTargetIifColumnChange(set.id, value)
+                            }
+                            placeholder={`Select the IIF column (MEMO Target ${
+                              index + 1
+                            })`}
+                            disabled={!iifColumns.length}
+                            style={{ width: "100%" }}
+                          >
+                            {iifColumns.map((iifColumn) => (
+                              <Select.Option
+                                key={`iif-memo-target-${set.id}-${iifColumn}`}
+                                value={iifColumn}
+                              >
+                                {iifColumn}
+                              </Select.Option>
+                            ))}
+                          </IMSelect>
+                        </Col>
+                        <Col span={6}>
+                          <label>MEMO Mapping Type {index + 1}: </label>
+                          <Radio.Group
+                            value={set.memoMappingType}
+                            onChange={(e) =>
+                              handleMemoMappingTypeChange(
+                                set.id,
+                                e.target.value
+                              )
+                            }
+                          >
+                            <Radio value="Keys">Keys</Radio>
+                            <Radio value="Values">Values</Radio>
+                            <Radio value="Both">Both</Radio>
+                          </Radio.Group>
+                          {index > 0 && (
+                            <IMButton
+                              handleClick={() => removeMemoMappingSet(set.id)}
+                              variant="solid"
+                              color="red"
+                              style={{ marginTop: "8px" }}
+                            >
+                              Remove
+                            </IMButton>
+                          )}
+                        </Col>
+                      </React.Fragment>
+                    ))}
+                  </Row>
+                </IMCard>
+              </Col>
+
               {isAdmin && (
                 <Col span={24}>
                   <IMCard
