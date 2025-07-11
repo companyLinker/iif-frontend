@@ -77,65 +77,69 @@ const IMBankMapping = () => {
         return [];
       }
 
-      const baseColumns = Object.keys(data[0])
-        .filter((key) => key !== "_id")
-        .map((key) => {
-          const column = {
-            title: key,
-            dataIndex: key,
-            key,
-            width: 200,
-            sorter: (a, b) =>
-              typeof a[key] === "string"
-                ? a[key].localeCompare(b[key])
-                : a[key] - b[key],
-          };
+      // Get all unique keys from the data, excluding '_id'
+      const allKeys = Array.from(
+        new Set(
+          data.flatMap((item) =>
+            Object.keys(item).filter((key) => key !== "_id")
+          )
+        )
+      );
 
-          if (key === "store_name") {
-            column.filterDropdown = ({
-              setSelectedKeys,
-              selectedKeys,
-              confirm,
-            }) => (
-              <div style={{ padding: 8 }}>
-                <Input
-                  placeholder="Search store name"
-                  value={selectedKeys[0]}
-                  onChange={(e) =>
-                    setSelectedKeys(e.target.value ? [e.target.value] : [])
-                  }
-                  onPressEnter={() => confirm()}
-                  style={{ width: 188, marginBottom: 8, display: "block" }}
-                />
-                <IMButton
-                  handleClick={() => confirm()}
-                  size="small"
-                  style={{ width: 90, marginRight: 8 }}
-                >
-                  Search
-                </IMButton>
-                <IMButton
-                  handleClick={() => {
-                    setSelectedKeys([]);
-                    confirm();
-                    setFilteredData(data);
-                  }}
-                  size="small"
-                  style={{ width: 90 }}
-                >
-                  Reset
-                </IMButton>
-              </div>
-            );
-            column.onFilter = (value, record) =>
-              record[key]
-                ?.toString()
-                .toLowerCase()
-                .includes(value.toLowerCase());
-          }
+      const baseColumns = allKeys.map((key) => {
+        const column = {
+          title: key,
+          dataIndex: key,
+          key,
+          width: 200,
+          sorter: (a, b) =>
+            typeof a[key] === "string"
+              ? a[key]?.localeCompare(b[key] || "")
+              : (a[key] || 0) - (b[key] || 0),
+        };
 
-          return column;
-        });
+        if (key === "store_name") {
+          column.filterDropdown = ({
+            setSelectedKeys,
+            selectedKeys,
+            confirm,
+          }) => (
+            <div style={{ padding: 8 }}>
+              <Input
+                placeholder="Search store name"
+                value={selectedKeys[0]}
+                onChange={(e) =>
+                  setSelectedKeys(e.target.value ? [e.target.value] : [])
+                }
+                onPressEnter={() => confirm()}
+                style={{ width: 188, marginBottom: 8, display: "block" }}
+              />
+              <IMButton
+                handleClick={() => confirm()}
+                size="small"
+                style={{ width: 90, marginRight: 8 }}
+              >
+                Search
+              </IMButton>
+              <IMButton
+                handleClick={() => {
+                  setSelectedKeys([]);
+                  confirm();
+                  setFilteredData(data);
+                }}
+                size="small"
+                style={{ width: 90 }}
+              >
+                Reset
+              </IMButton>
+            </div>
+          );
+          column.onFilter = (value, record) =>
+            record[key]?.toString().toLowerCase().includes(value.toLowerCase());
+        }
+
+        return column;
+      });
 
       return [
         {
@@ -269,14 +273,25 @@ const IMBankMapping = () => {
       return;
     }
 
-    const headers = columns.map((col) => col.title).join(",");
+    // Get all unique keys from the data, excluding '_id'
+    const headers = Array.from(
+      new Set(
+        data.flatMap((item) => Object.keys(item).filter((key) => key !== "_id"))
+      )
+    );
+
+    // Create CSV content
     const rows = data.map((row) =>
-      columns
-        .filter((col) => col.key !== "select" && col.key !== "actions")
-        .map((col) => `"${row[col.dataIndex] || ""}"`)
+      headers
+        .map((key) => {
+          const value = row[key] !== undefined ? row[key] : "";
+          // Escape quotes and handle commas in values
+          return `"${String(value).replace(/"/g, '""')}"`;
+        })
         .join(",")
     );
-    const csvContent = [headers, ...rows].join("\n");
+
+    const csvContent = [headers.join(","), ...rows].join("\n");
     const blob = new Blob([csvContent], { type: "text/csv" });
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -286,7 +301,7 @@ const IMBankMapping = () => {
     link.click();
     document.body.removeChild(link);
     window.URL.revokeObjectURL(url);
-  }, [data, columns]);
+  }, [data]);
 
   const handleDeleteSelected = () => {
     const password = prompt("Enter admin password:");
