@@ -324,6 +324,7 @@ const IMHome = () => {
   const [selectedDbBrand, setSelectedDbBrand] = useState(null);
 
   const [newIifColumnName, setNewIifColumnName] = useState("");
+  const [storeData, setStoreData] = useState([]);
 
   const handleNewIifColumnNameChange = useCallback((e) => {
     setNewIifColumnName(e.target.value);
@@ -427,122 +428,125 @@ const IMHome = () => {
     normalizeColumnName,
   ]);
 
+  const storeNoToStoreName = useMemo(() => {
+    const map = new Map();
+    storeData.forEach((store) => {
+      let noValue = store.NO;
+      if (typeof store.NO === "string" && store.NO.startsWith("{")) {
+        try {
+          const parsedNO = JSON.parse(store.NO.replace(/[-\u001F]+/g, ""));
+          noValue = parsedNO || Object.values(parsedNO)[0] || null;
+        } catch (e) {
+          // Silent fail
+        }
+      } else if (typeof store.NO === "object" && store.NO !== null) {
+        noValue =
+          Object.keys(store.NO)[0] || Object.values(store.NO)[0] || null;
+      }
+      if (noValue != null && store.NAME) {
+        const key = noValue.toString().trim();
+        if (key && key !== "") {
+          map.set(key, store.NAME);
+        }
+      }
+    });
+    return map;
+  }, [storeData]);
+
+  const storeNameToBm = useMemo(() => {
+    const map = new Map();
+    bmData.forEach((bm) => {
+      const storeNumber = bm.StoreNo ? bm.StoreNo.toString().trim() : "";
+      const storeName = storeNoToStoreName.get(storeNumber);
+      if (storeName) {
+        map.set(storeName, bm);
+      }
+    });
+    return map;
+  }, [bmData, storeNoToStoreName]);
+
   const matchedStoreNames = useMemo(() => {
     if (
       !allData.length ||
       !bmData.length ||
-      !sourceColumns.includes("StoreName")
+      !sourceColumns.includes("StoreName") ||
+      !storeData.length
     ) {
       return [];
     }
-
-    const ctStoreNames = new Map();
-    const ctStoreNumbers = new Map();
-    allData.forEach((row) => {
-      const storeName = row[sourceColumns.indexOf("StoreName")];
-      if (storeName && typeof storeName === "string") {
-        const normalizedName = normalizeString(storeName);
-        const number = extractNumber(storeName);
-        if (normalizedName) {
-          ctStoreNames.set(normalizedName, storeName);
-        }
-        if (number) {
-          ctStoreNumbers.set(number, storeName);
-        }
-      }
-    });
-
-    const matchedStores = new Set();
+    const matched = new Set();
     bmData.forEach((bm) => {
-      if (!bm.POS_COMPANY_NAME || typeof bm.POS_COMPANY_NAME !== "string")
-        return;
-
-      const normalizedPosName = normalizeString(bm.POS_COMPANY_NAME);
-      const posNumber = extractNumber(bm.POS_COMPANY_NAME);
-
-      if (ctStoreNames.has(normalizedPosName)) {
-        matchedStores.add(bm.POS_COMPANY_NAME);
-        return;
-      }
-
-      if (posNumber && ctStoreNumbers.has(posNumber)) {
-        matchedStores.add(bm.POS_COMPANY_NAME);
-        return;
-      }
-
-      const posWords = normalizedPosName.split(" ").filter(Boolean);
-      for (const [ctNormalized, ctOriginal] of ctStoreNames) {
-        const ctWords = ctNormalized.split(" ").filter(Boolean);
-        const commonWords = posWords.filter((word) => ctWords.includes(word));
-        const lengthRatio =
-          Math.min(posWords.length, ctWords.length) /
-          Math.max(posWords.length, ctWords.length);
-        if (commonWords.length > 0 && lengthRatio > 0.7) {
-          matchedStores.add(bm.POS_COMPANY_NAME);
-          break;
-        }
+      const storeNumber = bm.StoreNo ? bm.StoreNo.toString().trim() : "";
+      const storeName = storeNoToStoreName.get(storeNumber);
+      if (storeName) {
+        matched.add(storeName);
       }
     });
-
-    return [...matchedStores].sort();
-  }, [allData, bmData, sourceColumns, normalizeString, extractNumber]);
+    const storeNameIndex = sourceColumns.indexOf("StoreName");
+    const dataStoreNames = [
+      ...new Set(
+        allData
+          .map((row) => row[storeNameIndex])
+          .filter((name) => name && typeof name === "string")
+      ),
+    ];
+    return [...matched].filter((name) => dataStoreNames.includes(name)).sort();
+  }, [allData, bmData, sourceColumns, storeData, storeNoToStoreName]);
 
   const filteredStates = useMemo(() => {
     if (!bmData.length) return states;
     if (!selectedStoreNames.length && !selectedBrands.length) return states;
-
     const validStates = new Set();
     bmData.forEach((bm) => {
+      const storeNumber = bm.StoreNo ? bm.StoreNo.toString().trim() : "";
+      const storeName = storeNoToStoreName.get(storeNumber);
       const storeMatch =
         selectedStoreNames.length === 0 ||
-        selectedStoreNames.includes(bm.POS_COMPANY_NAME);
+        (storeName && selectedStoreNames.includes(storeName));
       const brandMatch =
-        selectedBrands.length === 0 || selectedBrands.includes(bm.BRAND);
+        selectedBrands.length === 0 || selectedBrands.includes(bm.Brand);
       if (storeMatch && brandMatch && bm.State) {
         validStates.add(bm.State);
       }
     });
-
     return states.filter((state) => validStates.has(state)).sort();
-  }, [bmData, states, selectedStoreNames, selectedBrands]);
+  }, [bmData, states, selectedStoreNames, selectedBrands, storeNoToStoreName]);
 
   const filteredBrands = useMemo(() => {
     if (!bmData.length) return brands;
     if (!selectedStoreNames.length && !selectedStates.length) return brands;
-
     const validBrands = new Set();
     bmData.forEach((bm) => {
+      const storeNumber = bm.StoreNo ? bm.StoreNo.toString().trim() : "";
+      const storeName = storeNoToStoreName.get(storeNumber);
       const storeMatch =
         selectedStoreNames.length === 0 ||
-        selectedStoreNames.includes(bm.POS_COMPANY_NAME);
+        (storeName && selectedStoreNames.includes(storeName));
       const stateMatch =
         selectedStates.length === 0 || selectedStates.includes(bm.State);
-      if (storeMatch && stateMatch && bm.BRAND) {
-        validBrands.add(bm.BRAND);
+      if (storeMatch && stateMatch && bm.Brand) {
+        validBrands.add(bm.Brand);
       }
     });
-
     return brands.filter((brand) => validBrands.has(brand)).sort();
-  }, [bmData, brands, selectedStoreNames, selectedStates]);
+  }, [bmData, brands, selectedStoreNames, selectedStates, storeNoToStoreName]);
 
   const filteredStoreNames = useMemo(() => {
-    if (!bmData.length) return matchedStoreNames;
+    if (!bmData.length || !storeNameToBm.size) return matchedStoreNames;
     if (!selectedStates.length && !selectedBrands.length)
       return matchedStoreNames;
-
-    const validStores = new Set();
-    bmData.forEach((bm) => {
-      const stateMatch =
-        selectedStates.length === 0 || selectedStates.includes(bm.State);
-      const brandMatch =
-        selectedBrands.length === 0 || selectedBrands.includes(bm.BRAND);
-      if (stateMatch && brandMatch && bm.POS_COMPANY_NAME) {
-        validStores.add(bm.POS_COMPANY_NAME);
-      }
-    });
-
-    return matchedStoreNames.filter((store) => validStores.has(store)).sort();
-  }, [bmData, matchedStoreNames, selectedStates, selectedBrands]);
+    return matchedStoreNames
+      .filter((storeName) => {
+        const bm = storeNameToBm.get(storeName);
+        if (!bm) return false;
+        const stateMatch =
+          selectedStates.length === 0 || selectedStates.includes(bm.State);
+        const brandMatch =
+          selectedBrands.length === 0 || selectedBrands.includes(bm.Brand);
+        return stateMatch && brandMatch;
+      })
+      .sort();
+  }, [matchedStoreNames, selectedStates, selectedBrands, storeNameToBm]);
 
   const getPositionMappedData = useCallback(
     (mappingColumn, column, position) => {
@@ -640,34 +644,45 @@ const IMHome = () => {
 
   const fetchFilterOptions = useCallback(async () => {
     try {
-      const response = await axios.get(
-        `${import.meta.env.VITE_API_URL}/api/filter-options`
-      );
+      const [filterResponse, storeResponse] = await Promise.all([
+        axios.get(`${import.meta.env.VITE_API_URL}/api/filter-options`),
+        axios.get(`${import.meta.env.VITE_API_URL}/api/store-data`),
+      ]);
+
       const {
         states = [],
         brands = [],
         storeMappings = [],
-      } = response.data || {};
-      if (!states || !brands || !storeMappings) {
+      } = filterResponse.data || {};
+      const { storeData = [] } = storeResponse.data || {};
+
+      if (!states || !brands || !storeMappings || !storeData) {
         throw new Error("Invalid response format: Missing required fields");
       }
+
       setStates(states.sort());
       setBrands(brands.sort());
       setBmData(storeMappings);
+      setStoreData(storeData); // Add this line to set storeData
 
       // Create bank mapping lookup map
       const lookup = new Map();
-      storeMappings.forEach((bm) => {
-        if (bm.POS_COMPANY_NAME && (bm.mapped_col_name || bm.mappedColName)) {
-          const normalizedKey = normalizeStoreName(bm.POS_COMPANY_NAME);
-          lookup.set(normalizedKey, bm.mapped_col_name || bm.mappedColName);
+      storeData.forEach((store) => {
+        if (store.NAME && store.NO) {
+          const normalizedName = normalizeStoreName(store.NAME);
+          const bmEntry = storeMappings.find(
+            (bm) => bm.StoreNo && bm.StoreNo.toString() === store.NO.toString()
+          );
+          if (bmEntry && bmEntry.BankCOA) {
+            lookup.set(normalizedName, bmEntry.BankCOA);
+          }
         }
       });
       setBankMappingLookup(lookup);
     } catch (error) {
       notificationApi.error({
         message: "Error",
-        description: `Failed to fetch filter options: ${error.message}`,
+        description: `Failed to fetch filter options or store data: ${error.message}`,
       });
     }
   }, [notificationApi, normalizeStoreName]);
@@ -924,21 +939,20 @@ const IMHome = () => {
     (value) => {
       setSelectedStates(value);
       if (value.length) {
-        const validBrands = new Set(
-          bmData
-            .filter((bm) => value.includes(bm.State))
-            .map((bm) => bm.BRAND)
-            .filter(Boolean)
-        );
+        const validBrands = new Set();
+        const validStores = new Set();
+        bmData.forEach((bm) => {
+          if (value.includes(bm.State)) {
+            const storeNumber = bm.StoreNo ? bm.StoreNo.toString().trim() : "";
+            const storeName = storeNoToStoreName.get(storeNumber);
+            if (storeName) {
+              validStores.add(storeName);
+              if (bm.Brand) validBrands.add(bm.Brand);
+            }
+          }
+        });
         setSelectedBrands((prev) =>
           prev.filter((brand) => validBrands.has(brand))
-        );
-
-        const validStores = new Set(
-          bmData
-            .filter((bm) => value.includes(bm.State))
-            .map((bm) => bm.POS_COMPANY_NAME)
-            .filter(Boolean)
         );
         setSelectedStoreNames((prev) =>
           prev.filter((store) => validStores.has(store))
@@ -957,12 +971,14 @@ const IMHome = () => {
     (value) => {
       setSelectedBrands(value);
       if (value.length) {
-        const validStores = new Set(
-          bmData
-            .filter((bm) => value.includes(bm.BRAND))
-            .map((bm) => bm.POS_COMPANY_NAME)
-            .filter(Boolean)
-        );
+        const validStores = new Set();
+        bmData.forEach((bm) => {
+          if (value.includes(bm.Brand)) {
+            const storeNumber = bm.StoreNo ? bm.StoreNo.toString().trim() : "";
+            const storeName = storeNoToStoreName.get(storeNumber);
+            if (storeName) validStores.add(storeName);
+          }
+        });
         setSelectedStoreNames((prev) =>
           prev.filter((store) => validStores.has(store))
         );
@@ -979,21 +995,17 @@ const IMHome = () => {
     (value) => {
       setSelectedStoreNames(value);
       if (value.length) {
-        const validStates = new Set(
-          bmData
-            .filter((bm) => value.includes(bm.POS_COMPANY_NAME))
-            .map((bm) => bm.State)
-            .filter(Boolean)
-        );
+        const validStates = new Set();
+        const validBrands = new Set();
+        value.forEach((storeName) => {
+          const bm = storeNameToBm.get(storeName);
+          if (bm) {
+            if (bm.State) validStates.add(bm.State);
+            if (bm.Brand) validBrands.add(bm.Brand);
+          }
+        });
         setSelectedStates((prev) =>
           prev.filter((state) => validStates.has(state))
-        );
-
-        const validBrands = new Set(
-          bmData
-            .filter((bm) => value.includes(bm.POS_COMPANY_NAME))
-            .map((bm) => bm.BRAND)
-            .filter(Boolean)
         );
         setSelectedBrands((prev) =>
           prev.filter((brand) => validBrands.has(brand))
@@ -1103,36 +1115,35 @@ const IMHome = () => {
   ]);
 
   const filteredData = useMemo(() => {
-    if (!allData.length || !bmData.length) return allData;
-
+    if (!allData.length) return allData;
+    const hasAnyFilter =
+      selectedStates.length > 0 ||
+      selectedBrands.length > 0 ||
+      selectedStoreNames.length > 0;
+    if (!hasAnyFilter) return allData;
+    if (!sourceColumns.includes("StoreName") || !storeNameToBm.size) return [];
+    const storeNameIndex = sourceColumns.indexOf("StoreName");
     return allData.filter((row) => {
-      const storeName = row[sourceColumns.indexOf("StoreName")];
-      if (!storeName) return false;
-
-      const matchedStore = bmData.find(
-        (bm) => bm.POS_COMPANY_NAME === storeName
-      );
-      if (!matchedStore) return false;
-
+      const storeName = row[storeNameIndex];
+      if (!storeName || typeof storeName !== "string") return false;
+      const matchedBm = storeNameToBm.get(storeName);
+      if (!matchedBm) return false;
       const stateMatch =
-        selectedStates.length === 0 ||
-        selectedStates.includes(matchedStore.State);
+        selectedStates.length === 0 || selectedStates.includes(matchedBm.State);
       const brandMatch =
-        selectedBrands.length === 0 ||
-        selectedBrands.includes(matchedStore.BRAND);
+        selectedBrands.length === 0 || selectedBrands.includes(matchedBm.Brand);
       const storeMatch =
         selectedStoreNames.length === 0 ||
-        selectedStoreNames.includes(matchedStore.POS_COMPANY_NAME);
-
+        selectedStoreNames.includes(storeName);
       return stateMatch && brandMatch && storeMatch;
     });
   }, [
     allData,
-    bmData,
+    sourceColumns,
     selectedStates,
     selectedBrands,
     selectedStoreNames,
-    sourceColumns,
+    storeNameToBm,
   ]);
 
   const handleApplyFilter = useCallback(() => {
@@ -1140,9 +1151,12 @@ const IMHome = () => {
     setSourceColumns(sourceColumns);
     notificationApi.success({
       message: "Success",
-      description: `Filtered ${filteredData.length} records.`,
+      description:
+        filteredData.length === allData.length
+          ? "No filters applied. Showing all records."
+          : `Filtered ${filteredData.length} records.`,
     });
-  }, [filteredData, sourceColumns, notificationApi]);
+  }, [filteredData, sourceColumns, notificationApi, allData]);
 
   const singleMappedColumns = useMemo(() => {
     return Object.keys(valueMappings).filter((column) => {
@@ -2045,7 +2059,6 @@ const IMHome = () => {
     let effectiveFormatName = formatName;
     if (!effectiveFormatName) {
       effectiveFormatName = "Format_" + moment().format("YYYYMMDD_HHmmss");
-      // Don't set formatName state to avoid implying a save
     }
 
     // Save or update format only if formatName is provided
@@ -2053,7 +2066,6 @@ const IMHome = () => {
       try {
         const saved = await saveFormat();
         if (!saved) {
-          // If saveFormat returned false, it means we're waiting for overwrite confirmation
           return;
         }
       } catch (error) {
@@ -2140,8 +2152,8 @@ const IMHome = () => {
       const storeToStateMap = new Map();
       if (organizeByState) {
         bmData.forEach((bm) => {
-          if (bm.POS_COMPANY_NAME && bm.State) {
-            storeToStateMap.set(bm.POS_COMPANY_NAME, bm.State);
+          if (bm.Name && bm.State) {
+            storeToStateMap.set(bm.Name, bm.State);
           }
         });
       }
@@ -2269,62 +2281,13 @@ const IMHome = () => {
               updatedRow[bankTargetIifColumn] !== undefined
             ) {
               let value = updatedRow[bankTargetIifColumn];
-              // Convert value to string and trim to handle numbers or whitespace
               value = value != null ? value.toString().trim() : "";
-
               if (value !== "") {
                 const normalizedValue = normalizeStoreName(value);
-                let mappedValue = bankMappingLookup.get(normalizedValue);
-
-                if (!mappedValue) {
-                  // Check if the value is a direct number (e.g., "9999")
-                  if (/^\d+$/.test(value)) {
-                    const directNumber = value;
-                    const bmEntry = bmData.find((bm) => {
-                      if (!bm.Storeno_) return false;
-                      // Normalize Storeno_ for comparison
-                      const storeno = bm.Storeno_.toString().trim();
-                      const isMatch = storeno === directNumber;
-
-                      return isMatch;
-                    });
-                    if (
-                      bmEntry &&
-                      (bmEntry.mapped_col_name || bmEntry.mappedColName)
-                    ) {
-                      mappedValue =
-                        bmEntry.mapped_col_name || bmEntry.mappedColName;
-                    } else {
-                    }
-                  }
-
-                  // If no match from direct number, try extracting number from format like "abc xyz - 1234"
-                  if (!mappedValue) {
-                    const numberMatch = extractNumber(value);
-                    if (numberMatch) {
-                      const bmEntry = bmData.find(
-                        (bm) =>
-                          bm.POS_COMPANY_NAME &&
-                          extractNumber(bm.POS_COMPANY_NAME) === numberMatch
-                      );
-                      if (
-                        bmEntry &&
-                        (bmEntry.mapped_col_name || bmEntry.mappedColName)
-                      ) {
-                        mappedValue =
-                          bmEntry.mapped_col_name || bmEntry.mappedColName;
-                      } else {
-                      }
-                    }
-                  }
-                } else {
-                }
-
+                const mappedValue = bankMappingLookup.get(normalizedValue);
                 if (mappedValue) {
                   updatedRow[bankTargetIifColumn] = mappedValue;
-                } else {
                 }
-              } else {
               }
             }
 

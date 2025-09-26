@@ -5,6 +5,7 @@ import IMProtectedRoute from "../component/IMProtectedRoute";
 import IMLogin from "../pages/IMLogin";
 import IMMainLayout from "../component/IMMainLayout";
 import IMBankMapping from "../pages/IMBankMapping";
+import IMStoreData from "../pages/IMStoreData";
 
 export const router = createBrowserRouter([
   {
@@ -29,6 +30,10 @@ export const router = createBrowserRouter([
       {
         path: "/bank-mapping",
         element: <IMBankMapping />,
+      },
+      {
+        path: "/store-names",
+        element: <IMStoreData />,
       },
     ],
   },
