@@ -11,6 +11,8 @@ import { Col, Row, Select, Input, notification } from "antd";
 
 const { TextArea } = Input;
 
+const isAdmin = localStorage.getItem("userRole") === "admin";
+
 // Memoized Input with local state for responsiveness
 const MemoizedInput = React.memo(({ name, initialValue, onValueChange }) => {
   const [localValue, setLocalValue] = useState(initialValue);
@@ -1202,20 +1204,24 @@ const IMUpload = () => {
                   options={brandOptions}
                   allowClear
                 />
-                <input
-                  type="file"
-                  onChange={handleFileChange}
-                  accept=".xlsx,.xls"
-                  multiple
-                />
-                <IMButton
-                  color={"blue"}
-                  handleClick={handleUpload}
-                  disabled={uploading || !selectedBrand}
-                  className={"mb-3"}
-                >
-                  {uploading ? "Uploading..." : "Upload"}
-                </IMButton>
+                {isAdmin && (
+                  <>
+                    <input
+                      type="file"
+                      onChange={handleFileChange}
+                      accept=".xlsx,.xls"
+                      multiple
+                    />
+                    <IMButton
+                      color={"blue"}
+                      handleClick={handleUpload}
+                      disabled={uploading || !selectedBrand}
+                      className={"mb-3"}
+                    >
+                      {uploading ? "Uploading..." : "Upload"}
+                    </IMButton>
+                  </>
+                )}
                 <IMDatePicker
                   value={[startDate, endDate]}
                   handleChange={handleDateChange}
