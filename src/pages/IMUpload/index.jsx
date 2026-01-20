@@ -29,10 +29,6 @@ const MemoizedInput = React.memo(({ name, initialValue, onValueChange }) => {
     onValueChange(name, newValue);
   };
 
-  if (process.env.NODE_ENV === "development") {
-    console.log(`Rendering input: ${name}, value: ${localValue}`);
-  }
-
   return (
     <input
       type="text"
@@ -62,7 +58,7 @@ const IMUpload = () => {
   const [calculatedColumnName, setCalculatedColumnName] = useState("");
   const [calculatedColumnsFormula, setCalculatedColumnsFormula] = useState("");
   const [calculatedSelectedColumns, setCalculatedSelectedColumns] = useState(
-    []
+    [],
   );
   const [replaceColumn, setReplaceColumn] = useState(null);
   const [brandOptions, setBrandOptions] = useState([]);
@@ -74,7 +70,6 @@ const IMUpload = () => {
   const [canRedo, setCanRedo] = useState(false);
   const [calculating, setCalculating] = useState(false); // New state for loader
   const ADMIN_PASSWORD = `${import.meta.env.VITE_DB_UPDATE_PSSWRD}`;
-  const DEBUG = process.env.NODE_ENV === "development";
   const isAdmin = localStorage.getItem("userRole") === "admin";
   const allowedColumnsForNonAdmin = ["#1", "#2", "#3", "#4", "#5"];
   const separateWidthColumns = ["#1", "#2", "#3", "#4", "#5", "Date"];
@@ -85,9 +80,9 @@ const IMUpload = () => {
         try {
           const response = await axios.post(
             `${import.meta.env.VITE_API_URL}/api/clear-transaction-logs`,
-            { brand: selectedBrand }
+            { brand: selectedBrand },
           );
-          if (DEBUG) console.log("Cleared transaction logs:", response.data);
+
           setCanUndo(false);
           setCanRedo(false);
           notificationApi.info({
@@ -97,7 +92,7 @@ const IMUpload = () => {
         } catch (error) {
           console.error(
             "Error clearing transaction logs:",
-            error.response?.data || error
+            error.response?.data || error,
           );
           notificationApi.error({
             message: "Error Clearing Logs",
@@ -106,9 +101,6 @@ const IMUpload = () => {
               "Failed to clear transaction logs.",
           });
         }
-      } else {
-        if (DEBUG)
-          console.log("Skipping log clear: missing brand", { selectedBrand });
       }
     };
 
@@ -118,7 +110,7 @@ const IMUpload = () => {
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [selectedBrand, notificationApi, DEBUG]);
+  }, [selectedBrand, notificationApi]);
 
   // Fetch transaction availability
   const checkTransactions = useCallback(async () => {
@@ -126,24 +118,23 @@ const IMUpload = () => {
     try {
       const response = await axios.post(
         `${import.meta.env.VITE_API_URL}/api/check-transactions`,
-        { brand: selectedBrand }
+        { brand: selectedBrand },
       );
       setCanUndo(response.data.canUndo);
       setCanRedo(response.data.canRedo);
-      if (DEBUG) console.log("Transaction status:", response.data);
     } catch (error) {
       console.error("Error checking transactions:", error);
       setCanUndo(false);
       setCanRedo(false);
     }
-  }, [selectedBrand, DEBUG]);
+  }, [selectedBrand]);
 
   // Fetch brands and formulas, selecting the active formula by default
   useEffect(() => {
     const fetchBrandsAndFormulas = async () => {
       try {
         const brandResponse = await axios.get(
-          `${import.meta.env.VITE_API_URL}/api/brands`
+          `${import.meta.env.VITE_API_URL}/api/brands`,
         );
         const brands = brandResponse.data.map((brand) => ({
           label: brand,
@@ -152,7 +143,7 @@ const IMUpload = () => {
         setBrandOptions(brands);
 
         const formulaResponse = await axios.get(
-          `${import.meta.env.VITE_API_URL}/api/formulas`
+          `${import.meta.env.VITE_API_URL}/api/formulas`,
         );
         const formulaOptions = formulaResponse.data.map((formula) => ({
           label: `${formula.formula} → ${formula.column} (${
@@ -187,7 +178,7 @@ const IMUpload = () => {
   useEffect(() => {
     if (selectedBrand) {
       const activeFormula = formulas.find(
-        (f) => f.selected && f.brand === selectedBrand
+        (f) => f.selected && f.brand === selectedBrand,
       );
       if (activeFormula) {
         setSelectedFormula(activeFormula);
@@ -209,7 +200,6 @@ const IMUpload = () => {
 
   const handleFileChange = (event) => {
     const selectedFiles = Array.from(event.target.files);
-    if (DEBUG) console.log("Files selected:", selectedFiles);
     setFiles(selectedFiles);
   };
 
@@ -237,11 +227,6 @@ const IMUpload = () => {
           const formula = selectedFormula.formula;
           const targetColumn = selectedFormula.column;
 
-          if (DEBUG)
-            console.log(
-              `Applying formula: ${formula} to column: ${targetColumn} for row: ${rowIndex}`
-            );
-
           let formulaColumns = formulaColumnsCache.get(formula);
           if (!formulaColumns) {
             formulaColumns = [];
@@ -253,18 +238,13 @@ const IMUpload = () => {
               const escapedCol = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
               const regex = new RegExp(
                 `(^|[\\s+\\-*/%\\(])\\s*(${escapedCol})\\s*([\\s+\\-*/%\\)]|$)`,
-                "gi"
+                "gi",
               );
               if (regex.test(formula)) {
                 formulaColumns.push({ value, regex });
               }
             });
             formulaColumnsCache.set(formula, formulaColumns);
-            if (DEBUG)
-              console.log(
-                "Formula columns detected:",
-                formulaColumns.map((c) => c.value)
-              );
           }
 
           let expression = formula;
@@ -273,9 +253,9 @@ const IMUpload = () => {
             let cellValue =
               value === column
                 ? value
-                : newFormData[rowIndex]?.[value] ??
+                : (newFormData[rowIndex]?.[value] ??
                   data[rowIndex]?.[value] ??
-                  0;
+                  0);
             if (
               cellValue === null ||
               cellValue === undefined ||
@@ -295,13 +275,9 @@ const IMUpload = () => {
             const escapedCol = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
             const regex = new RegExp(
               `(^|[\\s+\\-*/%\\(])\\s*(${escapedCol})\\s*([\\s+\\-*/%\\)]|$)`,
-              "g"
+              "g",
             );
             expression = expression.replace(regex, `$1${cellValue}$3`);
-            if (DEBUG)
-              console.log(
-                `Replaced ${value} with ${cellValue} in expression: ${expression}`
-              );
           });
 
           let result;
@@ -312,45 +288,30 @@ const IMUpload = () => {
               result = evaluate(expression);
               if (isNaN(result) || !isFinite(result)) {
                 throw new Error(
-                  `Formula evaluation resulted in invalid number: "${result}"`
+                  `Formula evaluation resulted in invalid number: "${result}"`,
                 );
               }
             }
             newFormData[rowIndex][targetColumn] = result;
-            if (DEBUG)
-              console.log(`Calculated result for ${targetColumn}: ${result}`);
           } catch (error) {
             console.warn(
-              `Error evaluating formula for row ${rowIndex}: ${error.message}`
+              `Error evaluating formula for row ${rowIndex}: ${error.message}`,
             );
             newFormData[rowIndex][targetColumn] = 0;
           }
-        } else {
-          if (DEBUG)
-            console.log("No active formula applied for row:", rowIndex);
         }
 
-        if (DEBUG) console.log("Updated editFormData:", newFormData);
         return newFormData;
       });
-
-      if (DEBUG)
-        console.log(
-          `updateEditFormData took ${performance.now() - startTime}ms`
-        );
     },
-    [data, selectedFormula, columnOptions, DEBUG]
+    [data, selectedFormula, columnOptions],
   );
 
   const generateColumns = useCallback(
     (data, isAuthenticated, editColumns, editRows) => {
       if (!data || data.length === 0) {
-        if (DEBUG) console.log("No data to generate columns from");
         return [];
       }
-
-      if (DEBUG)
-        console.log("Generating columns, isAuthenticated:", isAuthenticated);
 
       const keys = Object.keys(data[0]);
       const columns = keys
@@ -366,7 +327,7 @@ const IMUpload = () => {
                 (item) =>
                   item.StoreName === record.StoreName &&
                   item.Date === record.Date &&
-                  item._id
+                  item._id,
               );
               if (
                 editColumns.includes(key) &&
@@ -421,7 +382,7 @@ const IMUpload = () => {
             const uniqueDates = [...new Set(data.map((item) => item[key]))]
               .filter((value) => value !== null && value !== undefined)
               .sort((a, b) =>
-                moment(a, "MM-DD-YYYY").diff(moment(b, "MM-DD-YYYY"))
+                moment(a, "MM-DD-YYYY").diff(moment(b, "MM-DD-YYYY")),
               );
             column.filters = uniqueDates.map((date) => ({
               text: date,
@@ -444,12 +405,12 @@ const IMUpload = () => {
 
       return columns;
     },
-    [isAdmin]
+    [isAdmin],
   );
 
   const columns = useMemo(
     () => generateColumns(data, isAuthenticated, editColumns, editRows),
-    [data, isAuthenticated, editColumns, editRows, generateColumns]
+    [data, isAuthenticated, editColumns, editRows, generateColumns],
   );
 
   const handleUpload = async () => {
@@ -483,11 +444,10 @@ const IMUpload = () => {
           headers: {
             "Content-Type": "multipart/form-data",
           },
-        }
+        },
       );
 
       if (response.status === 200) {
-        if (DEBUG) console.log("Upload successful:", response.data);
         const { insertedCount, duplicateCount, sheetCount, fileCount } =
           response.data;
         let message = `Upload completed! Total records inserted: ${insertedCount} from ${sheetCount} sheets across ${fileCount} files.`;
@@ -519,13 +479,12 @@ const IMUpload = () => {
   };
 
   useEffect(() => {
-    if (DEBUG) console.log("useEffect triggered, data length:", data.length);
     if (data.length > 0) {
       const dataWithId = data.map((item) => ({
         ...item,
         _id: item._id ? item._id.toString() : null,
       }));
-      if (DEBUG) console.log("Data with IDs:", dataWithId.slice(0, 2));
+
       const dataWithoutId = dataWithId.map(({ _id, ...rest }) => rest);
       setFilteredData(dataWithoutId);
     } else {
@@ -564,13 +523,6 @@ const IMUpload = () => {
     const formattedStartDate = startDate.format("MM-DD-YYYY");
     const formattedEndDate = endDate.format("MM-DD-YYYY");
 
-    if (DEBUG) {
-      console.log("Fetching data with start date:", formattedStartDate);
-      console.log("Fetching data with end date:", formattedEndDate);
-      console.log("Start date (ISO):", startDate.toISOString());
-      console.log("End date (ISO):", endDate.toISOString());
-    }
-
     axios
       .post(`${import.meta.env.VITE_API_URL}/api/data`, {
         startDate: formattedStartDate,
@@ -578,7 +530,6 @@ const IMUpload = () => {
         brand: selectedBrand,
       })
       .then((response) => {
-        if (DEBUG) console.log("Fetched data:", response.data);
         if (!response.data || response.data.length === 0) {
           notificationApi.warning({
             message: "Warning",
@@ -606,12 +557,10 @@ const IMUpload = () => {
 
   const handleColumnSelect = (selected) => {
     setSelectedColumns(selected);
-    if (DEBUG) console.log("Selected columns for download:", selected);
   };
 
   const handleEditColumnSelect = (selected) => {
     setEditColumns(selected);
-    if (DEBUG) console.log("Selected columns for edit:", selected);
     setIsAuthenticated(false);
     setEditRows({});
     setEditFormData({});
@@ -623,37 +572,18 @@ const IMUpload = () => {
       return;
     }
     const password = prompt("Enter admin password:");
-    if (DEBUG) console.log("Authentication attempt, password entered:");
     if (password === ADMIN_PASSWORD) {
-      if (DEBUG) console.log("Setting isAuthenticated to true");
       setIsAuthenticated(true);
       alert("Authentication successful!");
     } else {
-      if (DEBUG) console.log("Setting isAuthenticated to false");
       setIsAuthenticated(false);
       alert("Incorrect password!");
     }
   };
 
   const handleTableChange = (pagination, filters, sorter, extra) => {
-    if (DEBUG)
-      console.log(
-        "Table changed, pagination:",
-        pagination,
-        "filters:",
-        filters,
-        "sorter:",
-        sorter
-      );
     setFilteredData(extra.currentDataSource || []);
     setPageSize(pagination.pageSize);
-    if (DEBUG)
-      console.log(
-        "Updated filteredData:",
-        extra.currentDataSource?.slice(0, 2),
-        "New pageSize:",
-        pagination.pageSize
-      );
   };
 
   const handleEdit = () => {
@@ -662,7 +592,6 @@ const IMUpload = () => {
       return;
     }
     if (data.length > 0) {
-      if (DEBUG) console.log("Edit clicked, enabling edit mode for all rows");
       const newEditRows = {};
       const newFormData = {};
       data.forEach((row, idx) => {
@@ -672,14 +601,10 @@ const IMUpload = () => {
           newFormData[idx][col] = row[col] ?? "";
         });
       });
-      if (DEBUG) {
-        console.log("Updated editRows:", newEditRows);
-        console.log("Initialized editFormData:", newFormData);
-      }
+
       setEditRows(newEditRows);
       setEditFormData(newFormData);
     } else {
-      if (DEBUG) console.log("No data available for editing");
       alert("No data available to edit.");
     }
   };
@@ -722,8 +647,6 @@ const IMUpload = () => {
       }
     });
 
-    if (DEBUG) console.log("Updates to send:", updatesToSend);
-
     if (updatesToSend.length === 0) {
       alert("No changes to save.");
       setEditRows({});
@@ -737,7 +660,7 @@ const IMUpload = () => {
         {
           updates: updatesToSend,
           brand: selectedBrand,
-        }
+        },
       );
 
       if (response.status === 200) {
@@ -764,7 +687,6 @@ const IMUpload = () => {
   };
 
   const handleCancel = () => {
-    if (DEBUG) console.log("Cancel clicked, exiting edit mode for all rows");
     setEditRows({});
     setEditFormData({});
   };
@@ -849,7 +771,7 @@ const IMUpload = () => {
         `${import.meta.env.VITE_API_URL}/api/formulas/${selectedFormula.value}`,
         {
           selected: !selectedFormula.selected,
-        }
+        },
       );
       if (response.status === 200) {
         setFormulas((prev) =>
@@ -862,11 +784,11 @@ const IMUpload = () => {
                     response.data.selected ? "Active" : "Inactive"
                   })`,
                 }
-              : f
-          )
+              : f,
+          ),
         );
         setSelectedFormula((prev) =>
-          prev ? { ...prev, selected: response.data.selected } : null
+          prev ? { ...prev, selected: response.data.selected } : null,
         );
         notificationApi.success({
           message: "Success",
@@ -943,11 +865,10 @@ const IMUpload = () => {
       const escapedCol = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const regex = new RegExp(
         `(^|[\\s+\\-*/%\\(])\\s*(${escapedCol})\\s*([\\s+\\-*/%\\)]|$)`,
-        "gi"
+        "gi",
       );
       if (regex.test(formulaCopy)) {
         formulaColumns.push({ value, lowerCase: value.toLowerCase() });
-        if (DEBUG) console.log(`Detected column in formula: ${value}`);
       }
     });
 
@@ -956,7 +877,6 @@ const IMUpload = () => {
         message: "Error",
         description: "Formula contains no valid column names.",
       });
-      if (DEBUG) console.log("No valid columns found in formula:", formulaCopy);
       return;
     }
 
@@ -965,17 +885,16 @@ const IMUpload = () => {
       const escapedCol = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const regex = new RegExp(
         `(^|[\\s+\\-*/%\\(])\\s*(${escapedCol})\\s*([\\s+\\-*/%\\)]|$)`,
-        "gi"
+        "gi",
       );
       remainingFormula = remainingFormula.replace(regex, "$1$3");
-      if (DEBUG) console.log(`After removing ${value}: ${remainingFormula}`);
     });
     if (!remainingFormula.match(/^[\s0-9+\-*/%.()]*$/)) {
       notificationApi.error({
         message: "Error",
         description: "Formula contains invalid characters or column names.",
       });
-      if (DEBUG) console.log("Invalid remaining formula:", remainingFormula);
+
       return;
     }
 
@@ -1008,29 +927,22 @@ const IMUpload = () => {
           const escapedCol = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
           const regex = new RegExp(
             `(^|[\\s+\\-*/%\\(])\\s*(${escapedCol})\\s*([\\s+\\-*/%\\)]|$)`,
-            "g"
+            "g",
           );
           expression = expression.replace(regex, `$1${cellValue}$3`);
-          if (DEBUG)
-            console.log(
-              `Replaced ${value} with ${cellValue} in expression: ${expression}`
-            );
         });
 
         let result;
         if (resultIsString) {
           result = expression.replace(/"/g, "");
-          if (DEBUG) console.log(`String result for row ${row._id}: ${result}`);
         } else {
           try {
             result = evaluate(expression);
             if (isNaN(result) || !isFinite(result)) {
               throw new Error(
-                `Formula evaluation resulted in invalid number: "${result}"`
+                `Formula evaluation resulted in invalid number: "${result}"`,
               );
             }
-            if (DEBUG)
-              console.log(`Numeric result for row ${row._id}: ${result}`);
           } catch (error) {
             throw new Error(`Invalid formula syntax: "${expression}"`);
           }
@@ -1039,7 +951,7 @@ const IMUpload = () => {
         return { _id: row._id, value: result };
       } catch (error) {
         console.warn(
-          `Error calculating value for row ${row._id}: ${error.message}`
+          `Error calculating value for row ${row._id}: ${error.message}`,
         );
         return { _id: row._id, value: 0 };
       }
@@ -1053,7 +965,7 @@ const IMUpload = () => {
           column: columnToUpdate,
           selected: false,
           brand: selectedBrand,
-        }
+        },
       );
 
       if (formulaResponse.status === 201) {
@@ -1078,7 +990,7 @@ const IMUpload = () => {
           updates,
           isNewColumn: !replaceColumn,
           brand: selectedBrand,
-        }
+        },
       );
 
       if (response.status === 200) {
@@ -1096,7 +1008,7 @@ const IMUpload = () => {
     } catch (error) {
       console.error(
         "Error adding calculated column or saving formula:",
-        error.response?.data || error
+        error.response?.data || error,
       );
       notificationApi.error({
         message: "Error",
@@ -1127,7 +1039,7 @@ const IMUpload = () => {
     try {
       const response = await axios.post(
         `${import.meta.env.VITE_API_URL}/api/undo`,
-        { brand: selectedBrand }
+        { brand: selectedBrand },
       );
 
       if (response.status === 200) {
@@ -1165,7 +1077,7 @@ const IMUpload = () => {
     try {
       const response = await axios.post(
         `${import.meta.env.VITE_API_URL}/api/redo`,
-        { brand: selectedBrand }
+        { brand: selectedBrand },
       );
 
       if (response.status === 200) {

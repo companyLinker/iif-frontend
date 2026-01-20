@@ -39,7 +39,7 @@ const generateMappedData = (
   positionMappings,
   calculatedColumnNames,
   calculatedColumnTypes,
-  calculatedColumnIsCustomString
+  calculatedColumnIsCustomString,
 ) => {
   return sourceData.map((row, rowIndex) => {
     const mappedRow = {};
@@ -93,7 +93,9 @@ const generateMappedData = (
 
         if (!skip) {
           const maxLength = Math.max(
-            ...Object.values(item).map((v) => (Array.isArray(v) ? v.length : 1))
+            ...Object.values(item).map((v) =>
+              Array.isArray(v) ? v.length : 1,
+            ),
           );
 
           const columnValues = {};
@@ -124,7 +126,7 @@ const generateMappedData = (
           iifColumns.forEach((iifCol) => {
             const mappedSourceColumns = valueMappings[iifCol] || [];
             const availableValues = columnValues[iifCol].filter(
-              (val) => val !== undefined
+              (val) => val !== undefined,
             );
             const remainingValues = [...availableValues];
             const columnRows = mappedRows.map((row) => ({ ...row }));
@@ -139,8 +141,8 @@ const generateMappedData = (
                   (row, i) =>
                     i === 0 ||
                     row[sourceColumns.indexOf(col)] ===
-                      sourceData[0][sourceColumns.indexOf(col)]
-                )
+                      sourceData[0][sourceColumns.indexOf(col)],
+                ),
             );
             const customStringValue = customStringCol
               ? sourceData[rowIndex][sourceColumns.indexOf(customStringCol)]
@@ -237,7 +239,7 @@ const generateMappedData = (
           });
 
           const filteredRows = mappedRows.filter(
-            (row) => !Object.values(row).includes("ZERO")
+            (row) => !Object.values(row).includes("ZERO"),
           );
 
           result.push(...filteredRows);
@@ -333,7 +335,7 @@ const IMHome = () => {
   const fetchBrands = useCallback(async () => {
     try {
       const response = await axios.get(
-        `${import.meta.env.VITE_API_URL}/api/brands`
+        `${import.meta.env.VITE_API_URL}/api/brands`,
       );
       if (response.data && Array.isArray(response.data)) {
         setAvailableBrands(response.data.sort());
@@ -487,7 +489,7 @@ const IMHome = () => {
       ...new Set(
         allData
           .map((row) => row[storeNameIndex])
-          .filter((name) => name && typeof name === "string")
+          .filter((name) => name && typeof name === "string"),
       ),
     ];
     return [...matched].filter((name) => dataStoreNames.includes(name)).sort();
@@ -555,7 +557,7 @@ const IMHome = () => {
         return Array.isArray(value) ? value[position - 1] : value;
       });
     },
-    [sourceData, sourceColumns]
+    [sourceData, sourceColumns],
   );
 
   const fillMissingDates = useCallback((data) => {
@@ -582,7 +584,7 @@ const IMHome = () => {
         } else if (typeof dateValue === "number") {
           const date = new Date(Math.round((dateValue - 25569) * 86400 * 1000));
           const adjustedDate = new Date(
-            date.getTime() + date.getTimezoneOffset() * 60 * 1000
+            date.getTime() + date.getTimezoneOffset() * 60 * 1000,
           );
           const year = adjustedDate.getFullYear();
           const month = adjustedDate.getMonth() + 1;
@@ -606,7 +608,7 @@ const IMHome = () => {
         positionMappings,
         calculatedColumnNames,
         calculatedColumnTypes,
-        calculatedColumnIsCustomString
+        calculatedColumnIsCustomString,
       );
     }
     return [];
@@ -635,7 +637,7 @@ const IMHome = () => {
   const debouncedSetPositionMappings = useRef(
     debounce((newPositionMappings) => {
       setPositionMappings(newPositionMappings);
-    }, 300)
+    }, 300),
   ).current;
 
   const handlePositionMappingChange = useCallback((column, position) => {
@@ -671,7 +673,7 @@ const IMHome = () => {
         if (store.NAME && store.NO) {
           const normalizedName = normalizeStoreName(store.NAME);
           const bmEntry = storeMappings.find(
-            (bm) => bm.StoreNo && bm.StoreNo.toString() === store.NO.toString()
+            (bm) => bm.StoreNo && bm.StoreNo.toString() === store.NO.toString(),
           );
           if (bmEntry && bmEntry.BankCOA) {
             lookup.set(normalizedName, bmEntry.BankCOA);
@@ -694,7 +696,7 @@ const IMHome = () => {
         const workbook = XLSX.read(event.target.result, { type: "binary" });
         const data = XLSX.utils.sheet_to_json(
           workbook.Sheets[workbook.SheetNames[0]],
-          { header: 1 }
+          { header: 1 },
         );
         const headers = data[0] || [];
         const newNormalizedColumnMap = {};
@@ -718,7 +720,7 @@ const IMHome = () => {
       };
       reader.readAsBinaryString(file);
     },
-    [normalizeColumnName, fetchFilterOptions]
+    [normalizeColumnName, fetchFilterOptions],
   );
 
   const parseIIFTemplate = useCallback((file) => {
@@ -730,11 +732,11 @@ const IMHome = () => {
         line
           .split("\t")
           .map((col) => col.trim())
-          .filter((col) => col !== "")
+          .filter((col) => col !== ""),
       );
       setIifHeaderRows(headerRows);
       const headerLine = lines.find(
-        (line) => line.startsWith("!TRNS") || line.startsWith("!SPL")
+        (line) => line.startsWith("!TRNS") || line.startsWith("!SPL"),
       );
       if (headerLine) {
         const columns = headerLine
@@ -778,7 +780,7 @@ const IMHome = () => {
       };
       reader.readAsBinaryString(file);
     },
-    [normalizeStoreName]
+    [normalizeStoreName],
   );
 
   const parseMemoMappingFile = useCallback(
@@ -803,7 +805,7 @@ const IMHome = () => {
       };
       reader.readAsBinaryString(file);
     },
-    [normalizeStoreName]
+    [normalizeStoreName],
   );
 
   const handleKeyMapping = useCallback((sourceColumns, iifColumn) => {
@@ -861,7 +863,7 @@ const IMHome = () => {
         return prev.filter((set) => set.id !== id);
       });
     },
-    [notificationApi]
+    [notificationApi],
   );
 
   const handleMemoMappingsChange = useCallback(
@@ -884,20 +886,20 @@ const IMHome = () => {
         });
         setMemoMappingSets((prev) =>
           prev.map((set) =>
-            set.id === id ? { ...set, memoMappings: mappings } : set
-          )
+            set.id === id ? { ...set, memoMappings: mappings } : set,
+          ),
         );
       };
       reader.readAsBinaryString(file);
     },
-    [normalizeStoreName]
+    [normalizeStoreName],
   );
 
   const handleMemoSourceIifColumnChange = useCallback((id, value) => {
     setMemoMappingSets((prev) =>
       prev.map((set) =>
-        set.id === id ? { ...set, memoSourceIifColumn: value } : set
-      )
+        set.id === id ? { ...set, memoSourceIifColumn: value } : set,
+      ),
     );
   }, []);
 
@@ -905,20 +907,20 @@ const IMHome = () => {
     (id, value) => {
       setMemoMappingSets((prev) =>
         prev.map((set) =>
-          set.id === id ? { ...set, memoTargetIifColumn: value } : set
-        )
+          set.id === id ? { ...set, memoTargetIifColumn: value } : set,
+        ),
       );
       // Verify state update
       setTimeout(() => {}, 0);
     },
-    [memoMappingSets]
+    [memoMappingSets],
   );
 
   const handleMemoMappingTypeChange = useCallback((id, value) => {
     setMemoMappingSets((prev) =>
       prev.map((set) =>
-        set.id === id ? { ...set, memoMappingType: value } : set
-      )
+        set.id === id ? { ...set, memoMappingType: value } : set,
+      ),
     );
   }, []);
 
@@ -952,10 +954,10 @@ const IMHome = () => {
           }
         });
         setSelectedBrands((prev) =>
-          prev.filter((brand) => validBrands.has(brand))
+          prev.filter((brand) => validBrands.has(brand)),
         );
         setSelectedStoreNames((prev) =>
-          prev.filter((store) => validStores.has(store))
+          prev.filter((store) => validStores.has(store)),
         );
       } else {
         if (!selectedStoreNames.length) {
@@ -964,7 +966,7 @@ const IMHome = () => {
         }
       }
     },
-    [bmData, selectedStoreNames]
+    [bmData, selectedStoreNames],
   );
 
   const handleBrandChange = useCallback(
@@ -980,7 +982,7 @@ const IMHome = () => {
           }
         });
         setSelectedStoreNames((prev) =>
-          prev.filter((store) => validStores.has(store))
+          prev.filter((store) => validStores.has(store)),
         );
       } else {
         if (!selectedStates.length && !selectedStoreNames.length) {
@@ -988,7 +990,7 @@ const IMHome = () => {
         }
       }
     },
-    [bmData, selectedStates, selectedStoreNames]
+    [bmData, selectedStates, selectedStoreNames],
   );
 
   const handleStoreNameChange = useCallback(
@@ -1005,10 +1007,10 @@ const IMHome = () => {
           }
         });
         setSelectedStates((prev) =>
-          prev.filter((state) => validStates.has(state))
+          prev.filter((state) => validStates.has(state)),
         );
         setSelectedBrands((prev) =>
-          prev.filter((brand) => validBrands.has(brand))
+          prev.filter((brand) => validBrands.has(brand)),
         );
       } else {
         if (!selectedStates.length) {
@@ -1016,7 +1018,7 @@ const IMHome = () => {
         }
       }
     },
-    [bmData, selectedStates]
+    [bmData, selectedStates],
   );
 
   const handleEmptyColumnNameChange = useCallback((e) => {
@@ -1061,7 +1063,7 @@ const IMHome = () => {
           const headers = Object.keys(dataWithoutId[0]);
           const normalizedHeaders = headers.map(normalizeColumnName);
           const dataArray = dataWithoutId.map((item) =>
-            headers.map((header) => item[header])
+            headers.map((header) => item[header]),
           );
           const newNormalizedColumnMap = {};
           headers.forEach((header) => {
@@ -1190,7 +1192,7 @@ const IMHome = () => {
 
     const normalizedCalculatedColumn = normalizeColumnName(calculatedColumn);
     const existingColumn = normalizedColumnLookup.get(
-      normalizedCalculatedColumn
+      normalizedCalculatedColumn,
     );
 
     if (existingColumn && existingColumn !== calculatedColumn) {
@@ -1226,7 +1228,7 @@ const IMHome = () => {
     } else {
       const formula = calculatedColumnsFormula || selectedColumns.join(" ");
       const normalizedSourceColumns = sourceColumns.map((col) =>
-        normalizeColumnName(col)
+        normalizeColumnName(col),
       );
 
       // Create a list of columns used in the formula
@@ -1236,7 +1238,7 @@ const IMHome = () => {
         const escapedCol = col.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         const regex = new RegExp(
           `(^|[\\s+\\-*/%\\(])\\s*(${escapedCol})\\s*([\\s+\\-*/%\\)]|$)`,
-          "gi"
+          "gi",
         );
         if (regex.test(formulaCopy)) {
           formulaColumns.push(col);
@@ -1265,7 +1267,7 @@ const IMHome = () => {
               const colIndex = sourceColumns.indexOf(col);
               if (colIndex === -1) {
                 throw new Error(
-                  `Column "${col}" not found in source data at row ${rowIndex}`
+                  `Column "${col}" not found in source data at row ${rowIndex}`,
                 );
               }
               let value = row[colIndex];
@@ -1289,14 +1291,14 @@ const IMHome = () => {
               const escapedCol = col.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
               const regex = new RegExp(
                 `(^|[\\s+\\-*/%\\(])\\s*(${escapedCol})\\s*([\\s+\\-*/%\\)]|$)`,
-                "gi"
+                "gi",
               );
               expression = expression.replace(regex, `$1${value}$3`);
             });
 
             if (!isValid || !expression.match(/^[0-9+\-*/().\s]+$/)) {
               throw new Error(
-                `Invalid formula syntax: "${expression}" at row ${rowIndex}`
+                `Invalid formula syntax: "${expression}" at row ${rowIndex}`,
               );
             }
 
@@ -1308,7 +1310,7 @@ const IMHome = () => {
               (isNaN(result) || !isFinite(result))
             ) {
               throw new Error(
-                `Formula evaluation resulted in invalid number: "${result}" at row ${rowIndex}`
+                `Formula evaluation resulted in invalid number: "${result}" at row ${rowIndex}`,
               );
             }
 
@@ -1335,7 +1337,7 @@ const IMHome = () => {
     // Add to calculatedColumnNames if not in sourceColumns
     if (!sourceColumns.includes(calculatedColumn)) {
       setCalculatedColumnNames((prev) =>
-        prev.includes(calculatedColumn) ? prev : [...prev, calculatedColumn]
+        prev.includes(calculatedColumn) ? prev : [...prev, calculatedColumn],
       );
     }
 
@@ -1438,7 +1440,7 @@ const IMHome = () => {
     data,
     sourceColumns,
     nonZeroColumns = [],
-    excludedFields = []
+    excludedFields = [],
   ) => {
     if (!data.length || !sourceColumns.length) return 1; // Default to 1 if no data or columns
     return data.reduce((min, row) => {
@@ -1469,7 +1471,7 @@ const IMHome = () => {
         "Date",
         "Accumulated",
       ]),
-    [sourceData, sourceColumns, nonZeroColumns]
+    [sourceData, sourceColumns, nonZeroColumns],
   );
   const addEmptyColumn = useCallback(() => {
     if (!emptyColumnName) {
@@ -1517,13 +1519,13 @@ const IMHome = () => {
   const fetchFormats = useCallback(async () => {
     try {
       const response = await axios.get(
-        `${import.meta.env.VITE_API_URL}/api/formats`
+        `${import.meta.env.VITE_API_URL}/api/formats`,
       );
       if (response.data && Array.isArray(response.data)) {
         setFormats(response.data);
       } else {
         throw new Error(
-          "Invalid response format: Expected an array of formats"
+          "Invalid response format: Expected an array of formats",
         );
       }
     } catch (error) {
@@ -1572,7 +1574,7 @@ const IMHome = () => {
       setCalculationType(format.calculationType || "Answer");
       setCalculatedColumnTypes(format.calculatedColumnTypes || {});
       setCalculatedColumnIsCustomString(
-        format.calculatedColumnIsCustomString || {}
+        format.calculatedColumnIsCustomString || {},
       );
       setCalculatedColumnNames(calcColNames);
       setEmptyColumnNames(format.emptyColumnNames || []);
@@ -1593,7 +1595,7 @@ const IMHome = () => {
                 memoSourceIifColumn: null,
                 memoTargetIifColumn: null,
               },
-            ]
+            ],
       );
       setSelectedStates(format.selectedStates || []);
       setSelectedBrands(format.selectedBrands || []);
@@ -1620,7 +1622,7 @@ const IMHome = () => {
 
           if (calcCol.selectedColumns?.length === 1 && !calcCol.formula) {
             const colIndex = tempSourceColumns.indexOf(
-              calcCol.selectedColumns[0]
+              calcCol.selectedColumns[0],
             );
             if (colIndex === -1) {
               notificationApi.warning({
@@ -1635,7 +1637,7 @@ const IMHome = () => {
             const formula =
               calcCol.formula || calcCol.selectedColumns?.join(" ") || "";
             const normalizedSourceColumns = tempSourceColumns.map((col) =>
-              col.trim().toLowerCase()
+              col.trim().toLowerCase(),
             );
             const columns = formula
               .split(/([-+*/()])/)
@@ -1644,7 +1646,7 @@ const IMHome = () => {
               .map((col) => col.toLowerCase());
 
             isCustomString = !columns.some((col) =>
-              normalizedSourceColumns.includes(col)
+              normalizedSourceColumns.includes(col),
             );
 
             if (isCustomString) {
@@ -1666,7 +1668,7 @@ const IMHome = () => {
                     const colIndex = normalizedSourceColumns.indexOf(col);
                     if (colIndex === -1) {
                       throw new Error(
-                        `Column "${col}" not found in source data at row ${rowIndex}`
+                        `Column "${col}" not found in source data at row ${rowIndex}`,
                       );
                     }
                     let value = row[colIndex];
@@ -1689,17 +1691,17 @@ const IMHome = () => {
 
                     const escapedCol = col.replace(
                       /[.*+?^${}()|[\]\\#]/g,
-                      "\\$&"
+                      "\\$&",
                     );
                     formulaCopy = formulaCopy.replace(
                       new RegExp(escapedCol, "g"),
-                      value
+                      value,
                     );
                   });
 
                   if (!isValid || !formulaCopy.match(/^[0-9+\-*/().\s]+$/)) {
                     throw new Error(
-                      `Invalid formula syntax: "${formulaCopy}" at row ${rowIndex}`
+                      `Invalid formula syntax: "${formulaCopy}" at row ${rowIndex}`,
                     );
                   }
 
@@ -1713,7 +1715,7 @@ const IMHome = () => {
                     (isNaN(result) || !isFinite(result))
                   ) {
                     throw new Error(
-                      `Formula evaluation resulted in invalid number: "${result}" at row ${rowIndex}`
+                      `Formula evaluation resulted in invalid number: "${result}" at row ${rowIndex}`,
                     );
                   }
 
@@ -1782,7 +1784,7 @@ const IMHome = () => {
       calculatedColumnNames,
       normalizedColumnLookup,
       normalizeColumnName,
-    ]
+    ],
   );
 
   // Handle format selection
@@ -1824,7 +1826,7 @@ const IMHome = () => {
         setIsFormatModified(false);
       }
     },
-    [formats, applyFormat]
+    [formats, applyFormat],
   );
 
   // Track changes to mappings and calculated columns
@@ -1950,7 +1952,7 @@ const IMHome = () => {
         ) {
           await axios.put(
             `${import.meta.env.VITE_API_URL}/api/formats/${selectedFormat}`,
-            formatData
+            formatData,
           );
           notificationApi.success({
             message: "Success",
@@ -1966,7 +1968,7 @@ const IMHome = () => {
           setFormats((prev) =>
             overrideFormatId
               ? prev.map((f) => (f._id === overrideFormatId ? newFormat : f))
-              : [...prev, newFormat]
+              : [...prev, newFormat],
           );
           setSelectedFormat(newFormat._id);
           notificationApi.success({
@@ -2021,7 +2023,7 @@ const IMHome = () => {
       selectedFormat,
       notificationApi,
       fetchFormats,
-    ]
+    ],
   );
 
   const handleOverwriteConfirm = useCallback(async () => {
@@ -2097,7 +2099,7 @@ const IMHome = () => {
           positionMappings,
           calculatedColumnNames,
           calculatedColumnTypes,
-          calculatedColumnIsCustomString
+          calculatedColumnIsCustomString,
         );
         mappedChunk.forEach(function (rowGroup, chunkIndex) {
           const originalIndex = i + chunkIndex;
@@ -2194,7 +2196,7 @@ const IMHome = () => {
                 const normalizedMemoValue =
                   normalizeStoreName(originalMemoValue);
                 const matchedKey = Object.keys(memoMappings).find(
-                  (key) => normalizeStoreName(key) === normalizedMemoValue
+                  (key) => normalizeStoreName(key) === normalizedMemoValue,
                 );
                 if (matchedKey) {
                   let memoValue;
@@ -2206,7 +2208,7 @@ const IMHome = () => {
                       normalizeColumnName(mappedColumnName);
                     const columnIndex = sourceColumns.findIndex(
                       (col) =>
-                        normalizeColumnName(col) === normalizedMappedColumn
+                        normalizeColumnName(col) === normalizedMappedColumn,
                     );
                     if (columnIndex !== -1) {
                       const sourceRowIndex = row.sourceRowIndex;
@@ -2224,7 +2226,7 @@ const IMHome = () => {
                       normalizeColumnName(mappedColumnName);
                     const columnIndex = sourceColumns.findIndex(
                       (col) =>
-                        normalizeColumnName(col) === normalizedMappedColumn
+                        normalizeColumnName(col) === normalizedMappedColumn,
                     );
                     if (columnIndex !== -1) {
                       const sourceRowIndex = row.sourceRowIndex;
@@ -2406,7 +2408,7 @@ const IMHome = () => {
   // Update UI to reflect normalized column mappings
   const normalizedSourceColumns = useMemo(() => {
     return sourceColumns.map(
-      (col) => normalizedColumnLookup.get(normalizeColumnName(col)) || col
+      (col) => normalizedColumnLookup.get(normalizeColumnName(col)) || col,
     );
   }, [sourceColumns, normalizedColumnLookup, normalizeColumnName]);
 
@@ -2415,7 +2417,7 @@ const IMHome = () => {
       {contextHolder}
       <Modal
         title="Format Name Conflict"
-        visible={showOverwriteModal}
+        open={showOverwriteModal}
         onOk={handleOverwriteConfirm}
         onCancel={handleOverwriteCancel}
         okText="Overwrite"
@@ -2943,7 +2945,7 @@ const IMHome = () => {
                             onChange={(e) =>
                               handleMemoMappingTypeChange(
                                 set.id,
-                                e.target.value
+                                e.target.value,
                               )
                             }
                           >
@@ -3099,7 +3101,7 @@ const IMHome = () => {
                                 value={keyMappings[iifColumn] || []}
                                 onChange={(e) => {
                                   const selectedColumns = Array.from(
-                                    e.target.selectedOptions
+                                    e.target.selectedOptions,
                                   ).map((option) => option.value);
                                   handleKeyMapping(selectedColumns, iifColumn);
                                 }}
@@ -3138,11 +3140,11 @@ const IMHome = () => {
                                 value={valueMappings[iifColumn] || []}
                                 onChange={(e) => {
                                   const selectedColumns = Array.from(
-                                    e.target.selectedOptions
+                                    e.target.selectedOptions,
                                   ).map((option) => option.value);
                                   handleValueMapping(
                                     selectedColumns,
-                                    iifColumn
+                                    iifColumn,
                                   );
                                 }}
                                 className="w-full p-2 border rounded h-32"
@@ -3193,7 +3195,7 @@ const IMHome = () => {
                           value={nonZeroColumns}
                           onChange={(e) => {
                             const selectedColumns = Array.from(
-                              e.target.selectedOptions
+                              e.target.selectedOptions,
                             ).map((option) => option.value);
                             setNonZeroColumns(selectedColumns);
                           }}
@@ -3235,7 +3237,7 @@ const IMHome = () => {
                         {singleMappedColumns.map((column) => {
                           const sourceColumn = valueMappings[column][0];
                           const mappingColumn = Object.keys(valueMappings).find(
-                            (key) => valueMappings[key].includes(sourceColumn)
+                            (key) => valueMappings[key].includes(sourceColumn),
                           );
                           return (
                             <div className="mb-2" key={`position-${column}`}>
@@ -3248,7 +3250,7 @@ const IMHome = () => {
                                 onChange={(value) =>
                                   handlePositionMappingChange(
                                     sourceColumn,
-                                    value
+                                    value,
                                   )
                                 }
                                 allowClear
@@ -3256,7 +3258,7 @@ const IMHome = () => {
                               >
                                 {Array.from(
                                   { length: minPairs },
-                                  (_, i) => i + 1
+                                  (_, i) => i + 1,
                                 ).map((position) => (
                                   <Select.Option
                                     key={`position-${sourceColumn}-${position}`}
@@ -3271,10 +3273,10 @@ const IMHome = () => {
                         })}
                         {calculatedMappedColumns.map((column) => {
                           const sourceColumn = valueMappings[column].find(
-                            (col) => calculatedColumnNames.includes(col)
+                            (col) => calculatedColumnNames.includes(col),
                           );
                           const mappingColumn = Object.keys(valueMappings).find(
-                            (key) => valueMappings[key].includes(sourceColumn)
+                            (key) => valueMappings[key].includes(sourceColumn),
                           );
                           return (
                             <div
@@ -3290,7 +3292,7 @@ const IMHome = () => {
                                 onChange={(value) =>
                                   handlePositionMappingChange(
                                     sourceColumn,
-                                    value
+                                    value,
                                   )
                                 }
                                 allowClear
@@ -3298,7 +3300,7 @@ const IMHome = () => {
                               >
                                 {Array.from(
                                   { length: minPairs },
-                                  (_, i) => i + 1
+                                  (_, i) => i + 1,
                                 ).map((position) => (
                                   <Select.Option
                                     key={`position-${sourceColumn}-${position}`}
@@ -3313,10 +3315,10 @@ const IMHome = () => {
                         })}
                         {emptyMappedColumns.map((column) => {
                           const sourceColumn = valueMappings[column].find(
-                            (col) => emptyColumnNames.includes(col)
+                            (col) => emptyColumnNames.includes(col),
                           );
                           const mappingColumn = Object.keys(valueMappings).find(
-                            (key) => valueMappings[key].includes(sourceColumn)
+                            (key) => valueMappings[key].includes(sourceColumn),
                           );
                           return (
                             <div
@@ -3332,7 +3334,7 @@ const IMHome = () => {
                                 onChange={(value) =>
                                   handlePositionMappingChange(
                                     sourceColumn,
-                                    value
+                                    value,
                                   )
                                 }
                                 allowClear
@@ -3340,7 +3342,7 @@ const IMHome = () => {
                               >
                                 {Array.from(
                                   { length: minPairs },
-                                  (_, i) => i + 1
+                                  (_, i) => i + 1,
                                 ).map((position) => (
                                   <Select.Option
                                     key={`position-${sourceColumn}-${position}`}
