@@ -313,89 +313,112 @@ const IMUpload = () => {
         return [];
       }
 
-      const keys = Object.keys(data[0]);
-      const columns = keys
-        .filter((key) => key !== "_id")
-        .map((key) => {
-          const column = {
-            title: key,
-            dataIndex: key,
-            key,
-            width: separateWidthColumns.includes(key) ? 110 : 180,
-            render: (value, record, index) => {
-              const originalIndex = data.findIndex(
-                (item) =>
-                  item.StoreName === record.StoreName &&
-                  item.Date === record.Date &&
-                  item._id,
+      // 1. Get all keys excluding _id
+      const allKeys = Object.keys(data[0]).filter((key) => key !== "_id");
+
+      // 2. Define the desired order for the first few columns
+      const fixedOrder = ["StoreName", "Date", "State"];
+
+      // 3. Create a sorted array of keys: Fixed columns first, then the rest
+      const sortedKeys = [
+        ...fixedOrder.filter((key) => allKeys.includes(key)), // Add StoreName, Date, State if they exist
+        ...allKeys.filter((key) => !fixedOrder.includes(key)), // Add the rest
+      ];
+
+      const columns = sortedKeys.map((key) => {
+        const column = {
+          title: key,
+          dataIndex: key,
+          key,
+          // Default width logic
+          width: separateWidthColumns.includes(key) ? 110 : 180,
+          render: (value, record, index) => {
+            const originalIndex = data.findIndex(
+              (item) =>
+                item.StoreName === record.StoreName &&
+                item.Date === record.Date &&
+                item._id,
+            );
+            // Ensure State is NOT editable even if selected in editColumns (just in case)
+            if (
+              key !== "State" &&
+              editColumns.includes(key) &&
+              editRows[originalIndex] &&
+              isAuthenticated
+            ) {
+              const inputName = JSON.stringify({
+                rowIndex: originalIndex,
+                column: key,
+              });
+              return (
+                <MemoizedInput
+                  name={inputName}
+                  initialValue={
+                    editFormData[originalIndex]?.[key] ?? (value || "")
+                  }
+                  onValueChange={updateEditFormData}
+                />
               );
-              if (
-                editColumns.includes(key) &&
-                editRows[originalIndex] &&
-                isAuthenticated
-              ) {
-                const inputName = JSON.stringify({
-                  rowIndex: originalIndex,
-                  column: key,
-                });
-                return (
-                  <MemoizedInput
-                    name={inputName}
-                    initialValue={
-                      editFormData[originalIndex]?.[key] ?? (value || "")
-                    }
-                    onValueChange={updateEditFormData}
-                  />
-                );
-              }
-              return value ?? "";
-            },
-          };
+            }
+            return value ?? "";
+          },
+        };
 
-          if (key === "StoreName" || key === "Date") {
-            column.fixed = "left";
-          }
+        // --- SPECIFIC COLUMN CONFIGURATIONS ---
 
-          if (typeof data[0][key] === "number") {
-            column.sorter = (a, b) => (a[key] ?? 0) - (b[key] ?? 0);
-          } else if (typeof data[0][key] === "string") {
-            column.sorter = (a, b) =>
-              (a[key] ?? "").localeCompare(b[key] ?? "");
-          } else if (typeof data[0][key] === "boolean") {
-            column.sorter = (a, b) => (a[key] ?? false) - (b[key] ?? false);
-          } else {
-            column.sorter = (a, b) => (a[key] ?? 0) - (b[key] ?? 0);
-          }
+        // Fix StoreName and Date to the left
+        if (key === "StoreName" || key === "Date") {
+          column.fixed = "left";
+        }
 
-          if (key === "StoreName") {
-            const uniqueStoreNames = [...new Set(data.map((item) => item[key]))]
-              .filter((value) => value !== null && value !== undefined)
-              .sort();
-            column.filters = uniqueStoreNames.map((name) => ({
-              text: name,
-              value: name,
-            }));
-            column.onFilter = (value, record) => record[key] === value;
-          }
+        // Configure STATE column: Fix to left, small width
+        if (key === "State") {
+          column.fixed = "left";
+          column.width = 80; // Set specific small width
+        }
 
-          if (key === "Date") {
-            const uniqueDates = [...new Set(data.map((item) => item[key]))]
-              .filter((value) => value !== null && value !== undefined)
-              .sort((a, b) =>
-                moment(a, "MM-DD-YYYY").diff(moment(b, "MM-DD-YYYY")),
-              );
-            column.filters = uniqueDates.map((date) => ({
-              text: date,
-              value: date,
-            }));
-            column.onFilter = (value, record) => record[key] === value;
-          }
+        // Sorters
+        if (typeof data[0][key] === "number") {
+          column.sorter = (a, b) => (a[key] ?? 0) - (b[key] ?? 0);
+        } else if (typeof data[0][key] === "string") {
+          column.sorter = (a, b) => (a[key] ?? "").localeCompare(b[key] ?? "");
+        } else if (typeof data[0][key] === "boolean") {
+          column.sorter = (a, b) => (a[key] ?? false) - (b[key] ?? false);
+        } else {
+          column.sorter = (a, b) => (a[key] ?? 0) - (b[key] ?? 0);
+        }
 
-          return column;
-        });
+        // Filters for StoreName
+        if (key === "StoreName") {
+          const uniqueStoreNames = [...new Set(data.map((item) => item[key]))]
+            .filter((value) => value !== null && value !== undefined)
+            .sort();
+          column.filters = uniqueStoreNames.map((name) => ({
+            text: name,
+            value: name,
+          }));
+          column.onFilter = (value, record) => record[key] === value;
+        }
 
-      const options = keys
-        .filter((key) => key !== "_id")
+        // Filters for Date
+        if (key === "Date") {
+          const uniqueDates = [...new Set(data.map((item) => item[key]))]
+            .filter((value) => value !== null && value !== undefined)
+            .sort((a, b) =>
+              moment(a, "MM-DD-YYYY").diff(moment(b, "MM-DD-YYYY")),
+            );
+          column.filters = uniqueDates.map((date) => ({
+            text: date,
+            value: date,
+          }));
+          column.onFilter = (value, record) => record[key] === value;
+        }
+
+        return column;
+      });
+
+      // Update column options for the dropdown (exclude fixed columns from being hidden if you wanted, or just list them all)
+      const options = sortedKeys
         .filter((key) => isAdmin || allowedColumnsForNonAdmin.includes(key))
         .map((key) => ({
           label: key,
@@ -504,7 +527,7 @@ const IMUpload = () => {
     setEndDate(dates[1]);
   };
 
-  const handleFetchData = () => {
+  const handleFetchData = async () => {
     if (!selectedBrand) {
       notificationApi.error({
         message: "Error",
@@ -523,36 +546,91 @@ const IMUpload = () => {
     const formattedStartDate = startDate.format("MM-DD-YYYY");
     const formattedEndDate = endDate.format("MM-DD-YYYY");
 
-    axios
-      .post(`${import.meta.env.VITE_API_URL}/api/data`, {
-        startDate: formattedStartDate,
-        endDate: formattedEndDate,
-        brand: selectedBrand,
-      })
-      .then((response) => {
-        if (!response.data || response.data.length === 0) {
-          notificationApi.warning({
-            message: "Warning",
-            description: "No data found for the selected brand and date range.",
-          });
-          setData([]);
-          setEditRows({});
-          setEditFormData({});
-          checkTransactions();
-          return;
-        }
-        setData(response.data);
+    try {
+      const [dataResponse, mappingResponse] = await Promise.all([
+        axios.post(`${import.meta.env.VITE_API_URL}/api/data`, {
+          startDate: formattedStartDate,
+          endDate: formattedEndDate,
+          brand: selectedBrand,
+        }),
+        axios.get(`${import.meta.env.VITE_API_URL}/api/filter-options`, {
+          params: { brand: selectedBrand },
+        }),
+      ]);
+
+      if (!dataResponse.data || dataResponse.data.length === 0) {
+        notificationApi.warning({
+          message: "Warning",
+          description: "No data found for the selected brand and date range.",
+        });
+        setData([]);
         setEditRows({});
         setEditFormData({});
         checkTransactions();
-      })
-      .catch((error) => {
-        console.error("Error fetching data:", error);
-        notificationApi.error({
-          message: "Error",
-          description: "Error fetching data. Please try again.",
+        return;
+      }
+
+      // --- IMPROVED MAPPING LOGIC ---
+
+      // 1. Build lookup map from BMData (More Robust)
+      const storeStateMap = {};
+
+      if (mappingResponse.data && mappingResponse.data.storeMappings) {
+        mappingResponse.data.storeMappings.forEach((mapping) => {
+          // Check multiple casing variations for StoreNo
+          const rawStoreNo =
+            mapping.StoreNo || mapping.storeno || mapping.Store_No;
+
+          if (rawStoreNo && mapping.State) {
+            // Normalize: Convert to string, trim, and remove ".0" if Excel added decimals
+            const cleanKey = String(rawStoreNo).trim().replace(/\.0+$/, "");
+            storeStateMap[cleanKey] = mapping.State;
+          }
         });
+      }
+
+      // 2. Merge State into Data
+      const mergedData = dataResponse.data.map((row) => {
+        let stateValue = row.State || "";
+
+        if (row.StoreName) {
+          const storeNameStr = String(row.StoreName);
+          const allNumbers = storeNameStr.match(/(\d+)/g);
+
+          if (allNumbers) {
+            for (const num of allNumbers) {
+              const exactKey = num;
+              // Handle "010337" -> "10337"
+              const intKey = String(parseInt(num, 10));
+
+              if (storeStateMap[exactKey]) {
+                stateValue = storeStateMap[exactKey];
+                break;
+              }
+              if (storeStateMap[intKey]) {
+                stateValue = storeStateMap[intKey];
+                break;
+              }
+            }
+          }
+        }
+
+        return {
+          ...row,
+          State: stateValue,
+        };
       });
+
+      setData(mergedData);
+      setEditRows({});
+      setEditFormData({});
+      checkTransactions();
+    } catch (error) {
+      notificationApi.error({
+        message: "Error",
+        description: "Error fetching data. Please try again.",
+      });
+    }
   };
 
   const handleColumnSelect = (selected) => {
