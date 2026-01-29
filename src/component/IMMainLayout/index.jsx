@@ -6,6 +6,7 @@ import {
   AppstoreAddOutlined,
   ShopOutlined,
   UserOutlined,
+  ToolOutlined,
 } from "@ant-design/icons";
 import { Outlet, useLocation, useNavigate, Link } from "react-router-dom";
 
@@ -32,6 +33,11 @@ const navItems = [
     key: "/store-names",
     icon: <ShopOutlined />,
     label: <Link to="/store-names">Store Names</Link>,
+  },
+  {
+    key: "/excel-to-qbo",
+    icon: <ToolOutlined />,
+    label: <Link to="/excel-to-qbo">Excel To QBO</Link>,
   },
 ];
 

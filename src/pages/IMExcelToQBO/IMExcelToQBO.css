@@ -1,0 +1,48 @@
+.im-excel-qbo-container {
+  padding: 20px 0;
+}
+
+/* Upload Area Overrides */
+.upload-dragger .ant-upload-drag {
+  background-color: #f9f9f9 !important;
+  border: 2px dashed #d9d9d9 !important;
+  border-radius: 8px !important;
+  transition: border-color 0.3s;
+}
+
+.upload-dragger .ant-upload-drag:hover {
+  border-color: #1890ff !important;
+}
+
+/* Mapping Grid Layout */
+.mapping-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+}
+
+@media (max-width: 768px) {
+  .mapping-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.mapping-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.mapping-item label {
+  margin-bottom: 5px;
+  font-weight: 500;
+  color: #555;
+  font-size: 14px;
+}
+
+.full-width-select {
+  width: 100%;
+}
+
+.ant-select-selector {
+  border-radius: 4px !important;
+}

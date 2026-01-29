@@ -6,6 +6,7 @@ import IMLogin from "../pages/IMLogin";
 import IMMainLayout from "../component/IMMainLayout";
 import IMBankMapping from "../pages/IMBankMapping";
 import IMStoreData from "../pages/IMStoreData";
+import IMExcelToQBO from "../pages/IMExcelToQBO";
 
 export const router = createBrowserRouter([
   {
@@ -34,6 +35,10 @@ export const router = createBrowserRouter([
       {
         path: "/store-names",
         element: <IMStoreData />,
+      },
+      {
+        path: "/excel-to-qbo",
+        element: <IMExcelToQBO />,
       },
     ],
   },
