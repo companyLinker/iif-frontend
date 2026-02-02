@@ -709,13 +709,23 @@ ${txnString}</BANKTRANLIST>
                     optionFilterProp="children"
                     value={selectedBofaAccounts}
                     onChange={setSelectedBofaAccounts}
-                    maxTagCount="responsive"
                   >
-                    {bofaAccounts.map((acc) => (
-                      <Option key={acc.accountNumber} value={acc.accountNumber}>
-                        {acc.accountName} ({acc.accountNumber})
-                      </Option>
-                    ))}
+                    {bofaAccounts.map((acc) => {
+                      // If name is missing or generic, just emphasize the number
+                      const displayName =
+                        acc.accountName && acc.accountName !== "Unknown Entity"
+                          ? `${acc.accountNumber} - ${acc.accountName}`
+                          : `${acc.accountNumber} (No Name Available)`;
+
+                      return (
+                        <Option
+                          key={acc.accountNumber}
+                          value={acc.accountNumber}
+                        >
+                          {displayName}
+                        </Option>
+                      );
+                    })}
                   </Select>
                 )}
 
