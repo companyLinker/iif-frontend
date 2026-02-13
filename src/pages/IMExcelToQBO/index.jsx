@@ -654,6 +654,23 @@ ${txnString}</BANKTRANLIST>
     },
   ];
 
+  const handleBofaAccountChange = (values) => {
+    // Check if "SELECT_ALL" was just clicked
+    if (values.includes("SELECT_ALL")) {
+      // If we already have all accounts selected, deselect all
+      if (selectedBofaAccounts.length === bofaAccounts.length) {
+        setSelectedBofaAccounts([]);
+      } else {
+        // Otherwise, select all available accounts
+        const allAccountNums = bofaAccounts.map((a) => a.accountNumber);
+        setSelectedBofaAccounts(allAccountNums);
+      }
+    } else {
+      // Normal selection change
+      setSelectedBofaAccounts(values);
+    }
+  };
+
   return (
     <div className="im-excel-qbo-container" style={{ padding: 20 }}>
       <Title level={2} style={{ textAlign: "center", marginBottom: 30 }}>
@@ -704,18 +721,38 @@ ${txnString}</BANKTRANLIST>
                 ) : (
                   <Select
                     mode="multiple"
+                    allowClear // <--- Adds the 'X' to clear all selections
                     style={{ width: "100%", marginBottom: 15 }}
                     placeholder="Select accounts (Searchable)"
                     optionFilterProp="children"
                     value={selectedBofaAccounts}
-                    onChange={setSelectedBofaAccounts}
-                    maxTagCount="responsive"
+                    onChange={handleBofaAccountChange} // <--- Use the new handler
+                    maxTagCount="responsive" // Optional: Keeps UI clean if many selected
                   >
-                    {bofaAccounts.map((acc) => (
-                      <Option key={acc.accountNumber} value={acc.accountNumber}>
-                        {acc.accountName} ({acc.accountNumber})
-                      </Option>
-                    ))}
+                    {/* <--- NEW: Select All Option ---> */}
+                    <Option key="SELECT_ALL" value="SELECT_ALL">
+                      <span style={{ fontWeight: "bold", color: "#1890ff" }}>
+                        {selectedBofaAccounts.length === bofaAccounts.length
+                          ? "Unselect All"
+                          : "Select All"}
+                      </span>
+                    </Option>
+
+                    {bofaAccounts.map((acc) => {
+                      const displayName =
+                        acc.accountName && acc.accountName !== "Unknown Entity"
+                          ? `${acc.accountNumber} - ${acc.accountName}`
+                          : `${acc.accountNumber} (No Name Available)`;
+
+                      return (
+                        <Option
+                          key={acc.accountNumber}
+                          value={acc.accountNumber}
+                        >
+                          {displayName}
+                        </Option>
+                      );
+                    })}
                   </Select>
                 )}
 
