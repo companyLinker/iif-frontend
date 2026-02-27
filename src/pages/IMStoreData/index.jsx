@@ -22,12 +22,18 @@ const IMStoreData = () => {
   const [loading, setLoading] = useState(false);
 
   const ADMIN_PASSWORD = `${import.meta.env.VITE_DB_UPDATE_PSSWRD}`;
+  const isAdmin = localStorage.getItem("userRole") === "admin"; // Check user role
 
   const handleFileChange = (event) => {
     setFile(event.target.files[0]);
   };
 
   const handleUpload = () => {
+    if (!isAdmin) {
+      alert("You do not have permission to upload files.");
+      return;
+    }
+
     if (!file) {
       alert("Please select a file to upload.");
       return;
@@ -70,9 +76,9 @@ const IMStoreData = () => {
       const allKeys = Array.from(
         new Set(
           data.flatMap((item) =>
-            Object.keys(item).filter((key) => key !== "_id")
-          )
-        )
+            Object.keys(item).filter((key) => key !== "_id"),
+          ),
+        ),
       );
 
       const baseColumns = allKeys.map((key) => {
@@ -130,15 +136,18 @@ const IMStoreData = () => {
         return column;
       });
 
-      return [
-        {
+      const finalColumns = [];
+
+      // Add Checkbox column for admins only
+      if (isAdmin) {
+        finalColumns.push({
           title: (
             <input
               type="checkbox"
               checked={selectedRowKeys.length === data.length}
               onChange={(e) =>
                 setSelectedRowKeys(
-                  e.target.checked ? data.map((record) => record._id) : []
+                  e.target.checked ? data.map((record) => record._id) : [],
                 )
               }
             />
@@ -153,14 +162,20 @@ const IMStoreData = () => {
                 setSelectedRowKeys(
                   e.target.checked
                     ? [...selectedRowKeys, record._id]
-                    : selectedRowKeys.filter((id) => id !== record._id)
+                    : selectedRowKeys.filter((id) => id !== record._id),
                 )
               }
             />
           ),
-        },
-        ...baseColumns,
-        {
+        });
+      }
+
+      // Add the standard data columns
+      finalColumns.push(...baseColumns);
+
+      // Add Edit Actions column for admins only
+      if (isAdmin) {
+        finalColumns.push({
           title: "Actions",
           key: "actions",
           width: 150,
@@ -169,14 +184,14 @@ const IMStoreData = () => {
               color="blue"
               handleClick={() => {
                 const originalRecord = originalData.find(
-                  (item) => item._id === record._id
+                  (item) => item._id === record._id,
                 );
                 if (originalRecord && originalRecord._id) {
                   setEditRow(record._id);
                   setEditForm({ ...originalRecord });
                 } else {
                   alert(
-                    "Invalid record selected for editing. Please ensure data contains valid IDs."
+                    "Invalid record selected for editing. Please ensure data contains valid IDs.",
                   );
                 }
               }}
@@ -185,17 +200,19 @@ const IMStoreData = () => {
               Edit
             </IMButton>
           ),
-        },
-      ];
+        });
+      }
+
+      return finalColumns;
     };
-  }, [selectedRowKeys, data]);
+  }, [selectedRowKeys, data, isAdmin, originalData]);
 
   const handleFetchData = useCallback(async () => {
     setLoading(true);
     try {
       const response = await axios.post(
         `${import.meta.env.VITE_API_URL}/api/store-data`,
-        {}
+        {},
       );
       const fetchedData = response.data.storeData.map((item) => ({
         ...item,
@@ -223,8 +240,10 @@ const IMStoreData = () => {
 
     const headers = Array.from(
       new Set(
-        data.flatMap((item) => Object.keys(item).filter((key) => key !== "_id"))
-      )
+        data.flatMap((item) =>
+          Object.keys(item).filter((key) => key !== "_id"),
+        ),
+      ),
     );
 
     const rows = data.map((row) =>
@@ -233,7 +252,7 @@ const IMStoreData = () => {
           const value = row[key] !== undefined ? row[key] : "";
           return `"${String(value).replace(/"/g, '""')}"`;
         })
-        .join(",")
+        .join(","),
     );
 
     const csvContent = [headers.join(","), ...rows].join("\n");
@@ -249,6 +268,11 @@ const IMStoreData = () => {
   }, [data]);
 
   const handleDeleteSelected = () => {
+    if (!isAdmin) {
+      alert("You do not have permission to delete records.");
+      return;
+    }
+
     const password = prompt("Enter admin password:");
     if (password !== ADMIN_PASSWORD) {
       alert("Incorrect password!");
@@ -274,7 +298,7 @@ const IMStoreData = () => {
       .then((response) => {
         if (response.status === 200) {
           alert(
-            `Selected data deleted successfully! Deleted ${response.data.deletedCount} records.`
+            `Selected data deleted successfully! Deleted ${response.data.deletedCount} records.`,
           );
           setSelectedRowKeys([]);
           handleFetchData();
@@ -287,6 +311,11 @@ const IMStoreData = () => {
   };
 
   const handleSaveEdit = () => {
+    if (!isAdmin) {
+      alert("You do not have permission to edit records.");
+      return;
+    }
+
     const password = prompt("Enter admin password:");
     if (password !== ADMIN_PASSWORD) {
       alert("Incorrect password!");
@@ -321,6 +350,11 @@ const IMStoreData = () => {
   };
 
   const handleAddNew = () => {
+    if (!isAdmin) {
+      alert("You do not have permission to add new records.");
+      return;
+    }
+
     const password = prompt("Enter admin password:");
     if (password !== ADMIN_PASSWORD) {
       alert("Incorrect password!");
@@ -360,7 +394,7 @@ const IMStoreData = () => {
         setFilteredData(extra.currentDataSource);
       }
     }, 300),
-    [data]
+    [data],
   );
 
   useEffect(() => {
@@ -378,30 +412,34 @@ const IMStoreData = () => {
   }, [data, generateColumns]);
 
   return (
-    <section className="py-5">
+    <section>
       <div className="container">
         <Row gutter={[16, 16]}>
           <Col span={12}>
             <IMCard>
-              <div className="store-data-upload-wrap">
-                <input
-                  type="file"
-                  onChange={handleFileChange}
-                  accept=".csv,.xlsx,.xls"
-                />
-                <IMButton
-                  color="blue"
-                  handleClick={handleUpload}
-                  disabled={uploading}
-                >
-                  {uploading ? "Uploading..." : "Upload Store Data"}
-                </IMButton>
-              </div>
+              {/* Only show upload section if admin */}
+              {isAdmin && (
+                <div className="store-data-upload-wrap">
+                  <input
+                    type="file"
+                    onChange={handleFileChange}
+                    accept=".csv,.xlsx,.xls"
+                  />
+                  <IMButton
+                    color="blue"
+                    handleClick={handleUpload}
+                    disabled={uploading}
+                  >
+                    {uploading ? "Uploading..." : "Upload Store Data"}
+                  </IMButton>
+                </div>
+              )}
               <IMButton
                 color="orange"
                 variant="filled"
                 handleClick={handleFetchData}
                 disabled={loading}
+                className={isAdmin ? "mt-3" : ""}
               >
                 {loading ? "Fetching..." : "Fetch Data"}
               </IMButton>
@@ -421,27 +459,34 @@ const IMStoreData = () => {
                 <p>Loading data...</p>
               ) : columns.length > 0 && data.length > 0 ? (
                 <>
-                  <IMButton
-                    color="red"
-                    variant="filled"
-                    handleClick={handleDeleteSelected}
-                    className="mb-3"
-                    disabled={selectedRowKeys.length === 0}
-                  >
-                    Delete Selected
-                  </IMButton>
-                  <IMButton
-                    color="green"
-                    variant="filled"
-                    handleClick={() => {
-                      setIsAdding(true);
-                      setEditForm({});
-                    }}
-                    className="mb-3 ml-3"
-                  >
-                    Add New Object
-                  </IMButton>
-                  {(editRow !== null || isAdding) && (
+                  {/* Only show delete and add buttons if admin */}
+                  {isAdmin && (
+                    <>
+                      <IMButton
+                        color="red"
+                        variant="filled"
+                        handleClick={handleDeleteSelected}
+                        className="mb-3"
+                        disabled={selectedRowKeys.length === 0}
+                      >
+                        Delete Selected
+                      </IMButton>
+                      <IMButton
+                        color="green"
+                        variant="filled"
+                        handleClick={() => {
+                          setIsAdding(true);
+                          setEditForm({});
+                        }}
+                        className="mb-3 ml-3"
+                      >
+                        Add New Object
+                      </IMButton>
+                    </>
+                  )}
+
+                  {/* Only show edit/add form if admin */}
+                  {isAdmin && (editRow !== null || isAdding) && (
                     <div className="edit-form mb-3">
                       {Object.keys(data[0] || {})
                         .filter((key) => key !== "_id")
@@ -500,6 +545,7 @@ const IMStoreData = () => {
                       )}
                     </div>
                   )}
+
                   <IMTable
                     columns={columns}
                     dataSource={filteredData}

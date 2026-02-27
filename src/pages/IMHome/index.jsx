@@ -2428,7 +2428,7 @@ const IMHome = () => {
           it?
         </p>
       </Modal>
-      <section className="py-5">
+      <section>
         <div className="container">
           <div className="space-y-4">
             <Row gutter={[16, 16]}>

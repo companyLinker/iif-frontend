@@ -1180,7 +1180,7 @@ const IMUpload = () => {
   return (
     <>
       {contextHolder}
-      <section className="py-5">
+      <section>
         <div className="container">
           <Row gutter={[16, 16]}>
             <Col span={12}>

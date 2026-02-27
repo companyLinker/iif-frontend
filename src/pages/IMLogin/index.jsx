@@ -16,12 +16,18 @@ const IMLogin = () => {
     const userUsername = `${import.meta.env.VITE_USER_USR}`;
     const userPassword = `${import.meta.env.VITE_USER_PSSWRD}`;
 
+    // New Cheque Sheet User credentials
+    const chequeUsername = `${import.meta.env.VITE_USER_CHEQUESHEET_USR}`;
+    const chequePassword = `${import.meta.env.VITE_USER_CHEQUESHEET_PSSWRD}`;
+
     let role = null;
 
     if (username === adminUsername && password === adminPassword) {
       role = "admin";
     } else if (username === userUsername && password === userPassword) {
       role = "user";
+    } else if (username === chequeUsername && password === chequePassword) {
+      role = "chequesheet_user"; // Assign the new role
     } else {
       setError("Invalid username or password");
       return;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import axios from "axios";
 import { debounce } from "lodash";
 import { Col, Input, Row, Select } from "antd";
@@ -17,22 +17,27 @@ const IMBankMapping = () => {
   const [columns, setColumns] = useState([]);
   const [selectedRowKeys, setSelectedRowKeys] = useState([]); // For delete functionality only
   const [searchText, setSearchText] = useState("");
-  const [adminPassword, setAdminPassword] = useState("");
   const [editRow, setEditRow] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [selectedState, setSelectedState] = useState([]);
   const [selectedPOSName, setSelectedPOSName] = useState([]);
   const [selectedBrand, setSelectedBrand] = useState([]);
   const [loading, setLoading] = useState(false); // Track fetch loading state
-  const [isAdding, setIsAdding] = useState(false); // Add this line with other useState declarations
+  const [isAdding, setIsAdding] = useState(false);
 
-  const ADMIN_PASSWORD = `${import.meta.env.VITE_DB_UPDATE_PSSWRD}`; // Replace with a secure password or env variable
+  const ADMIN_PASSWORD = `${import.meta.env.VITE_DB_UPDATE_PSSWRD}`;
+  const isAdmin = localStorage.getItem("userRole") === "admin"; // Determine role
 
   const handleFileChange = (event) => {
     setFile(event.target.files[0]);
   };
 
   const handleUpload = () => {
+    if (!isAdmin) {
+      alert("You do not have permission to upload files.");
+      return;
+    }
+
     if (!file) {
       alert("Please select a file to upload.");
       return;
@@ -48,7 +53,7 @@ const IMBankMapping = () => {
         formData,
         {
           headers: { "Content-Type": "multipart/form-data" },
-        }
+        },
       )
       .then((response) => {
         if (response.status === 200) {
@@ -95,7 +100,7 @@ const IMBankMapping = () => {
         "BankCOA",
       ];
       const columnKeys = Object.keys(data[0]).filter(
-        (key) => key !== "_id" && !bankColumns.includes(key)
+        (key) => key !== "_id" && !bankColumns.includes(key),
       );
 
       const baseColumns = columnKeys.map((key) => {
@@ -153,15 +158,19 @@ const IMBankMapping = () => {
         return column;
       });
 
-      return [
-        {
+      // Construct the final columns array conditionally based on role
+      const finalColumns = [];
+
+      // Add Checkbox column for admins only
+      if (isAdmin) {
+        finalColumns.push({
           title: (
             <input
               type="checkbox"
               checked={selectedRowKeys.length === data.length}
               onChange={(e) =>
                 setSelectedRowKeys(
-                  e.target.checked ? data.map((record) => record._id) : []
+                  e.target.checked ? data.map((record) => record._id) : [],
                 )
               }
             />
@@ -176,14 +185,20 @@ const IMBankMapping = () => {
                 setSelectedRowKeys(
                   e.target.checked
                     ? [...selectedRowKeys, record._id]
-                    : selectedRowKeys.filter((id) => id !== record._id)
+                    : selectedRowKeys.filter((id) => id !== record._id),
                 )
               }
             />
           ),
-        },
-        ...baseColumns,
-        {
+        });
+      }
+
+      // Add standard columns
+      finalColumns.push(...baseColumns);
+
+      // Add Actions (Edit) column for admins only
+      if (isAdmin) {
+        finalColumns.push({
           title: "Actions",
           key: "actions",
           width: 150,
@@ -192,14 +207,14 @@ const IMBankMapping = () => {
               color="blue"
               handleClick={() => {
                 const originalRecord = originalData.find(
-                  (item) => item._id === record._id
+                  (item) => item._id === record._id,
                 );
                 if (originalRecord && originalRecord._id) {
                   setEditRow(record._id);
                   setEditForm({ ...originalRecord });
                 } else {
                   alert(
-                    "Invalid record selected for editing. Please ensure data contains valid IDs."
+                    "Invalid record selected for editing. Please ensure data contains valid IDs.",
                   );
                 }
               }}
@@ -208,17 +223,19 @@ const IMBankMapping = () => {
               Edit
             </IMButton>
           ),
-        },
-      ];
+        });
+      }
+
+      return finalColumns;
     };
-  }, [selectedRowKeys, data]);
+  }, [selectedRowKeys, data, isAdmin, originalData]);
 
   const handleFetchData = useCallback(async () => {
     setLoading(true);
     try {
       const response = await axios.post(
         `${import.meta.env.VITE_API_URL}/api/bank-mapping-data`,
-        {}
+        {},
       );
       const fetchedData = response.data.map((item) => ({
         ...item,
@@ -248,7 +265,7 @@ const IMBankMapping = () => {
           state: selectedState,
           posName: selectedPOSName,
           brand: selectedBrand,
-        }
+        },
       );
       const fetchedData = response.data.map((item) => ({
         ...item,
@@ -278,8 +295,10 @@ const IMBankMapping = () => {
     // Get all unique keys from the data, excluding '_id'
     const headers = Array.from(
       new Set(
-        data.flatMap((item) => Object.keys(item).filter((key) => key !== "_id"))
-      )
+        data.flatMap((item) =>
+          Object.keys(item).filter((key) => key !== "_id"),
+        ),
+      ),
     );
 
     // Create CSV content
@@ -290,7 +309,7 @@ const IMBankMapping = () => {
           // Escape quotes and handle commas in values
           return `"${String(value).replace(/"/g, '""')}"`;
         })
-        .join(",")
+        .join(","),
     );
 
     const csvContent = [headers.join(","), ...rows].join("\n");
@@ -306,6 +325,11 @@ const IMBankMapping = () => {
   }, [data]);
 
   const handleDeleteSelected = () => {
+    if (!isAdmin) {
+      alert("You do not have permission to delete records.");
+      return;
+    }
+
     const password = prompt("Enter admin password:");
     if (password !== ADMIN_PASSWORD) {
       alert("Incorrect password!");
@@ -331,7 +355,7 @@ const IMBankMapping = () => {
       .then((response) => {
         if (response.status === 200) {
           alert(
-            `Selected data deleted successfully! Deleted ${response.data.deletedCount} records.`
+            `Selected data deleted successfully! Deleted ${response.data.deletedCount} records.`,
           );
           setSelectedRowKeys([]);
           handleFetchData();
@@ -344,6 +368,11 @@ const IMBankMapping = () => {
   };
 
   const handleSaveEdit = () => {
+    if (!isAdmin) {
+      alert("You do not have permission to edit records.");
+      return;
+    }
+
     const password = prompt("Enter admin password:");
     if (password !== ADMIN_PASSWORD) {
       alert("Incorrect password!");
@@ -384,6 +413,11 @@ const IMBankMapping = () => {
   };
 
   const handleAddNew = () => {
+    if (!isAdmin) {
+      alert("You do not have permission to add new records.");
+      return;
+    }
+
     const password = prompt("Enter admin password:");
     if (password !== ADMIN_PASSWORD) {
       alert("Incorrect password!");
@@ -417,7 +451,7 @@ const IMBankMapping = () => {
         setFilteredData(extra.currentDataSource);
       }
     }, 300),
-    [data]
+    [data],
   );
 
   useEffect(() => {
@@ -435,30 +469,34 @@ const IMBankMapping = () => {
   }, [data, generateColumns]);
 
   return (
-    <section className="py-5">
+    <section>
       <div className="container">
         <Row gutter={[16, 16]}>
           <Col span={12}>
             <IMCard>
-              <div className="bm-upload-wrap">
-                <input
-                  type="file"
-                  onChange={handleFileChange}
-                  accept=".csv,.xlsx,.xls"
-                />
-                <IMButton
-                  color="blue"
-                  handleClick={handleUpload}
-                  disabled={uploading}
-                >
-                  {uploading ? "Uploading..." : "Upload Bank Mapping"}
-                </IMButton>
-              </div>
+              {/* Only show upload section if admin */}
+              {isAdmin && (
+                <div className="bm-upload-wrap">
+                  <input
+                    type="file"
+                    onChange={handleFileChange}
+                    accept=".csv,.xlsx,.xls"
+                  />
+                  <IMButton
+                    color="blue"
+                    handleClick={handleUpload}
+                    disabled={uploading}
+                  >
+                    {uploading ? "Uploading..." : "Upload Bank Mapping"}
+                  </IMButton>
+                </div>
+              )}
               <IMButton
                 color="orange"
                 variant="filled"
                 handleClick={handleFetchData}
                 disabled={loading}
+                className={isAdmin ? "mt-3" : ""}
               >
                 {loading ? "Fetching..." : "Fetch Data"}
               </IMButton>
@@ -478,7 +516,7 @@ const IMBankMapping = () => {
                   .map((item) => item.State)
                   .filter(
                     (value) =>
-                      value !== null && value !== undefined && value !== ""
+                      value !== null && value !== undefined && value !== "",
                   )
                   .filter((value, index, self) => self.indexOf(value) === index)
                   .sort()
@@ -496,7 +534,7 @@ const IMBankMapping = () => {
                   .map((item) => item.Name)
                   .filter(
                     (value) =>
-                      value !== null && value !== undefined && value !== ""
+                      value !== null && value !== undefined && value !== "",
                   )
                   .filter((value, index, self) => self.indexOf(value) === index)
                   .sort()
@@ -514,7 +552,7 @@ const IMBankMapping = () => {
                   .map((item) => item.Brand)
                   .filter(
                     (value) =>
-                      value !== null && value !== undefined && value !== ""
+                      value !== null && value !== undefined && value !== "",
                   )
                   .filter((value, index, self) => self.indexOf(value) === index)
                   .sort()
@@ -544,27 +582,34 @@ const IMBankMapping = () => {
                 <p>Loading data...</p>
               ) : columns.length > 0 && data.length > 0 ? (
                 <>
-                  <IMButton
-                    color="red"
-                    variant="filled"
-                    handleClick={handleDeleteSelected}
-                    className="mb-3"
-                    disabled={selectedRowKeys.length === 0}
-                  >
-                    Delete Selected
-                  </IMButton>
-                  <IMButton
-                    color="green"
-                    variant="filled"
-                    handleClick={() => {
-                      setIsAdding(true);
-                      setEditForm({}); // Reset form for new entry
-                    }}
-                    className="mb-3 ml-3"
-                  >
-                    Add New Object
-                  </IMButton>
-                  {(editRow !== null || isAdding) && (
+                  {/* Only show delete and add buttons if admin */}
+                  {isAdmin && (
+                    <>
+                      <IMButton
+                        color="red"
+                        variant="filled"
+                        handleClick={handleDeleteSelected}
+                        className="mb-3"
+                        disabled={selectedRowKeys.length === 0}
+                      >
+                        Delete Selected
+                      </IMButton>
+                      <IMButton
+                        color="green"
+                        variant="filled"
+                        handleClick={() => {
+                          setIsAdding(true);
+                          setEditForm({}); // Reset form for new entry
+                        }}
+                        className="mb-3 ml-3"
+                      >
+                        Add New Object
+                      </IMButton>
+                    </>
+                  )}
+
+                  {/* Only show edit/add form if admin */}
+                  {isAdmin && (editRow !== null || isAdding) && (
                     <div className="edit-form mb-3">
                       {Object.keys(data[0] || {})
                         .filter((key) => key !== "_id")
@@ -623,6 +668,7 @@ const IMBankMapping = () => {
                       )}
                     </div>
                   )}
+
                   <IMTable
                     columns={columns}
                     dataSource={filteredData}
@@ -685,11 +731,11 @@ const IMBankMapping = () => {
                                             </span>
                                             {record[key]}
                                           </li>
-                                        )
+                                        ),
                                     )}
                                   </ul>
                                 </div>
-                              )
+                              ),
                           )}
                         </div>
                       ),
@@ -710,7 +756,7 @@ const IMBankMapping = () => {
                           "BankCOA",
                         ].some(
                           (key) =>
-                            record[key] && record[key].toString().trim() !== ""
+                            record[key] && record[key].toString().trim() !== "",
                         ),
                     }}
                   />
