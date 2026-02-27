@@ -24,6 +24,41 @@ const IMBankMapping = () => {
   const [selectedBrand, setSelectedBrand] = useState([]);
   const [loading, setLoading] = useState(false); // Track fetch loading state
   const [isAdding, setIsAdding] = useState(false);
+  const [expandedRowKeys, setExpandedRowKeys] = useState([]);
+
+  const allExpandableRowKeys = useMemo(() => {
+    return filteredData
+      .filter((record) =>
+        [
+          "BankName1",
+          "BankName2",
+          "BankName3",
+          "BankName4",
+          "BankAccountNo1",
+          "BankAccountNo2",
+          "BankAccountNo3",
+          "BankAccountNo4",
+          "RoutingNo1",
+          "RoutingNo2",
+          "RoutingNo3",
+          "RoutingNo4",
+          "BankCOA",
+        ].some((key) => record[key] && record[key].toString().trim() !== ""),
+      )
+      .map((record) => record._id);
+  }, [filteredData]);
+
+  const handleToggleExpandAll = () => {
+    // If all possible rows are expanded, collapse them all. Otherwise, expand them all.
+    if (
+      expandedRowKeys.length > 0 &&
+      expandedRowKeys.length === allExpandableRowKeys.length
+    ) {
+      setExpandedRowKeys([]);
+    } else {
+      setExpandedRowKeys(allExpandableRowKeys);
+    }
+  };
 
   const ADMIN_PASSWORD = `${import.meta.env.VITE_DB_UPDATE_PSSWRD}`;
   const isAdmin = localStorage.getItem("userRole") === "admin"; // Determine role
@@ -677,6 +712,25 @@ const IMBankMapping = () => {
                     onChange={handleTableChange}
                     rowKey={(record) => record._id}
                     expandable={{
+                      expandedRowKeys: expandedRowKeys,
+                      onExpandedRowsChange: (keys) => setExpandedRowKeys(keys),
+                      columnTitle: (
+                        <div
+                          style={{
+                            cursor: "pointer",
+                            fontWeight: "bold",
+                            fontSize: "16px",
+                            textAlign: "center",
+                          }}
+                          onClick={handleToggleExpandAll}
+                          title="Expand/Collapse All"
+                        >
+                          {expandedRowKeys.length > 0 &&
+                          expandedRowKeys.length === allExpandableRowKeys.length
+                            ? "-"
+                            : "+"}
+                        </div>
+                      ),
                       expandedRowRender: (record) => (
                         <div className="p-4 bg-gray-50 rounded-md">
                           {[
