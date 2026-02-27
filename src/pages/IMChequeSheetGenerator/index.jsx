@@ -83,15 +83,13 @@ const IMChequeSheetGenerator = () => {
               beforeUpload={handleBeforeUpload}
               fileList={file ? [file] : []}
               onRemove={() => setFile(null)}
-              accept=".txt,.csv"
+              accept=".csv"
               style={{ padding: 20 }}
             >
               <p className="ant-upload-drag-icon">
                 <InboxOutlined />
               </p>
-              <p className="ant-upload-text">
-                Click or drag .txt or .csv file here
-              </p>
+              <p className="ant-upload-text">Click or drag .csv file here</p>
               <p className="ant-upload-hint">
                 Ensure the file contains the required columns.
               </p>
