@@ -38,7 +38,7 @@ const IMChequeSheetGenerator = () => {
 
     try {
       const response = await fetch(
-        "http://localhost:3001/api/generate-cheque-sheet",
+        `${import.meta.env.VITE_API_URL}/api/generate-cheque-sheet`,
         {
           method: "POST",
           body: formData,

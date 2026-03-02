@@ -11,8 +11,6 @@ import { Col, Row, Select, Input, notification } from "antd";
 
 const { TextArea } = Input;
 
-const isAdmin = localStorage.getItem("userRole") === "admin";
-
 // Memoized Input with local state for responsiveness
 const MemoizedInput = React.memo(({ name, initialValue, onValueChange }) => {
   const [localValue, setLocalValue] = useState(initialValue);
