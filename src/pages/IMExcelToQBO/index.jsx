@@ -327,11 +327,11 @@ const IMExcelToQBO = () => {
         const accNum = tx.accountNumber;
         if (!newGroupedData[accNum]) newGroupedData[accNum] = [];
 
-        // 1. DATE: 2025-12-02 -> 20251202120000
+        // 1. DATE
         const rawDate = tx.asOfDate;
         const formattedDate = rawDate.replace(/-/g, "") + "120000";
 
-        // 2. AMOUNT & TYPE: Use 'Credit'/'Debit' indicator + absolute amount
+        // 2. AMOUNT & TYPE
         const rawAmount = parseFloat(tx.amount || 0);
         let type = "CREDIT";
         let amount = Math.abs(rawAmount);
@@ -341,7 +341,7 @@ const IMExcelToQBO = () => {
           amount = -Math.abs(rawAmount);
         }
 
-        // 3. CHECK NUMBER (If "Check" in text)
+        // 3. CHECK NUMBER
         let checkNum = null;
         if (
           (tx.transactionDescription &&
@@ -349,21 +349,23 @@ const IMExcelToQBO = () => {
           (tx.detailText && tx.detailText.toLowerCase().includes("check"))
         ) {
           type = "CHECK";
-          // Try to find 4+ digit number in details
           const match = (tx.detailText || "").match(/\d{4,}/);
           if (match) checkNum = match[0];
         }
 
-        // 4. NAME: Front text from details (max 32 chars)
-        // Matches BofA sample: <NAME>FISERV MERCHANT  DES:DEPOSIT
-        let name = (tx.detailText || "Transaction").substring(0, 32);
+        // --- UPDATED LOGIC ---
+        const cp = tx.counterParty ? tx.counterParty.trim() : "";
+        const dt = tx.detailText ? tx.detailText.trim() : "Transaction";
 
-        // 5. MEMO: Full details
-        const memo = `${tx.customerReference || ""} ${tx.detailText || ""}`
-          .trim()
-          .substring(0, 255);
+        // NAME logic: Use Counterparty ONLY. Fallback to detailText only if CP is empty.
+        let nameValue = cp ? cp : dt;
+        let name = nameValue.substring(0, 32);
 
-        // 6. FITID
+        // MEMO logic: Keep the joined version so you don't lose transaction details
+        const combinedDesc = cp ? `${cp}_${dt}` : dt;
+        const memo = `${combinedDesc}`.trim().substring(0, 255);
+
+        // 4. FITID
         const fitId = `${rawDate.replace(/-/g, "")}${accNum}${index}`;
 
         newGroupedData[accNum].push({
@@ -556,10 +558,9 @@ const IMExcelToQBO = () => {
       ? transactions[transactions.length - 1].date
       : nowStr;
 
-    // Use specific BofA headers if mode is BOFA_DB
-    const FID = isBofA ? "11162" : "10809";
-    const INTU_BID = isBofA ? "11162" : "10809";
-    const ORG = isBofA ? "Bank of America" : "Citizens";
+    const FID = isBofA ? "13540" : "10809";
+    const INTU_BID = isBofA ? "54111" : "10809";
+    const ORG = isBofA ? "BankOfAmerica" : "Citizens";
     const BANKID = isBofA ? "011000138" : "000000000";
 
     let txnString = "";
@@ -655,18 +656,14 @@ ${txnString}</BANKTRANLIST>
   ];
 
   const handleBofaAccountChange = (values) => {
-    // Check if "SELECT_ALL" was just clicked
     if (values.includes("SELECT_ALL")) {
-      // If we already have all accounts selected, deselect all
       if (selectedBofaAccounts.length === bofaAccounts.length) {
         setSelectedBofaAccounts([]);
       } else {
-        // Otherwise, select all available accounts
         const allAccountNums = bofaAccounts.map((a) => a.accountNumber);
         setSelectedBofaAccounts(allAccountNums);
       }
     } else {
-      // Normal selection change
       setSelectedBofaAccounts(values);
     }
   };
@@ -706,7 +703,7 @@ ${txnString}</BANKTRANLIST>
           </Card>
         </Col>
 
-        {/* --- STEP 2: INPUT (FILE OR DB) --- */}
+        {/* --- STEP 2: INPUT --- */}
         <Col xs={24} md={12}>
           <Card
             title="Step 2: Provide Data"
@@ -721,15 +718,14 @@ ${txnString}</BANKTRANLIST>
                 ) : (
                   <Select
                     mode="multiple"
-                    allowClear // <--- Adds the 'X' to clear all selections
+                    allowClear
                     style={{ width: "100%", marginBottom: 15 }}
                     placeholder="Select accounts (Searchable)"
                     optionFilterProp="children"
                     value={selectedBofaAccounts}
-                    onChange={handleBofaAccountChange} // <--- Use the new handler
-                    maxTagCount="responsive" // Optional: Keeps UI clean if many selected
+                    onChange={handleBofaAccountChange}
+                    maxTagCount="responsive"
                   >
-                    {/* <--- NEW: Select All Option ---> */}
                     <Option key="SELECT_ALL" value="SELECT_ALL">
                       <span style={{ fontWeight: "bold", color: "#1890ff" }}>
                         {selectedBofaAccounts.length === bofaAccounts.length
@@ -763,7 +759,6 @@ ${txnString}</BANKTRANLIST>
                 />
               </div>
             ) : (
-              // File Upload UI
               <>
                 <Dragger
                   customRequest={handleFileUpload}

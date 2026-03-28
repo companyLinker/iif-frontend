@@ -13,10 +13,13 @@ const IMLogin = () => {
   const handleLogin = () => {
     const adminUsername = `${import.meta.env.VITE_ADMIN_USR}`;
     const adminPassword = `${import.meta.env.VITE_ADMIN_PSSWRD}`;
-    const userUsername = `${import.meta.env.VITE_USER_USR}`;
-    const userPassword = `${import.meta.env.VITE_USER_PSSWRD}`;
 
-    // New Cheque Sheet User credentials
+    // Get the common password and the list of usernames
+    const commonUserPassword = `${import.meta.env.VITE_COMMON_USER_PSSWRD}`;
+    const commonUsernames = `${import.meta.env.VITE_COMMON_USERNAMES}`.split(
+      ",",
+    );
+
     const chequeUsername = `${import.meta.env.VITE_USER_CHEQUESHEET_USR}`;
     const chequePassword = `${import.meta.env.VITE_USER_CHEQUESHEET_PSSWRD}`;
 
@@ -24,10 +27,15 @@ const IMLogin = () => {
 
     if (username === adminUsername && password === adminPassword) {
       role = "admin";
-    } else if (username === userUsername && password === userPassword) {
-      role = "user";
+    }
+    // Check if entered username is in the allowed list and password matches common password
+    else if (
+      commonUsernames.includes(username) &&
+      password === commonUserPassword
+    ) {
+      role = "user"; // Kept as "user" so existing permissions/rights remain the same
     } else if (username === chequeUsername && password === chequePassword) {
-      role = "chequesheet_user"; // Assign the new role
+      role = "chequesheet_user";
     } else {
       setError("Invalid username or password");
       return;
@@ -35,7 +43,9 @@ const IMLogin = () => {
 
     localStorage.setItem("isAuthenticated", "true");
     localStorage.setItem("userRole", role);
+    localStorage.setItem("loggedInUser", username);
     localStorage.setItem("lastActivity", Date.now().toString());
+
     const from = location.state?.from?.pathname || "/";
     navigate(from);
   };

@@ -66,7 +66,7 @@ const IMUpload = () => {
   const [selectedFormula, setSelectedFormula] = useState(null);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
-  const [calculating, setCalculating] = useState(false); // New state for loader
+  const [calculating, setCalculating] = useState(false);
   const ADMIN_PASSWORD = `${import.meta.env.VITE_DB_UPDATE_PSSWRD}`;
   const isAdmin = localStorage.getItem("userRole") === "admin";
   const allowedColumnsForNonAdmin = ["#1", "#2", "#3", "#4", "#5"];
@@ -102,7 +102,6 @@ const IMUpload = () => {
       }
     };
 
-    // Delay to ensure selectedBrand is set after mount
     const timer = setTimeout(() => {
       clearTransactionLogs();
     }, 500);
@@ -110,7 +109,6 @@ const IMUpload = () => {
     return () => clearTimeout(timer);
   }, [selectedBrand, notificationApi]);
 
-  // Fetch transaction availability
   const checkTransactions = useCallback(async () => {
     if (!selectedBrand) return;
     try {
@@ -127,7 +125,6 @@ const IMUpload = () => {
     }
   }, [selectedBrand]);
 
-  // Fetch brands and formulas, selecting the active formula by default
   useEffect(() => {
     const fetchBrandsAndFormulas = async () => {
       try {
@@ -172,7 +169,6 @@ const IMUpload = () => {
     fetchBrandsAndFormulas();
   }, [notificationApi]);
 
-  // Update formula selection and check transactions when brand changes
   useEffect(() => {
     if (selectedBrand) {
       const activeFormula = formulas.find(
@@ -204,7 +200,6 @@ const IMUpload = () => {
   const updateEditFormData = useCallback(
     (name, value) => {
       const { rowIndex, column } = JSON.parse(name);
-      const startTime = performance.now();
 
       const formulaColumnsCache = new Map();
 
@@ -283,10 +278,13 @@ const IMUpload = () => {
             if (resultIsString) {
               result = expression.replace(/"/g, "");
             } else {
-              result = evaluate(expression);
+              let rawResult = evaluate(expression);
+              // Force conversion to number and round to 2 decimals
+              result = Number(parseFloat(rawResult).toFixed(2));
+
               if (isNaN(result) || !isFinite(result)) {
                 throw new Error(
-                  `Formula evaluation resulted in invalid number: "${result}"`,
+                  `Formula evaluation resulted in invalid number: "${rawResult}"`,
                 );
               }
             }
@@ -311,16 +309,12 @@ const IMUpload = () => {
         return [];
       }
 
-      // 1. Get all keys excluding _id
       const allKeys = Object.keys(data[0]).filter((key) => key !== "_id");
-
-      // 2. Define the desired order for the first few columns
       const fixedOrder = ["StoreName", "Date", "State"];
 
-      // 3. Create a sorted array of keys: Fixed columns first, then the rest
       const sortedKeys = [
-        ...fixedOrder.filter((key) => allKeys.includes(key)), // Add StoreName, Date, State if they exist
-        ...allKeys.filter((key) => !fixedOrder.includes(key)), // Add the rest
+        ...fixedOrder.filter((key) => allKeys.includes(key)),
+        ...allKeys.filter((key) => !fixedOrder.includes(key)),
       ];
 
       const columns = sortedKeys.map((key) => {
@@ -328,7 +322,6 @@ const IMUpload = () => {
           title: key,
           dataIndex: key,
           key,
-          // Default width logic
           width: separateWidthColumns.includes(key) ? 110 : 180,
           render: (value, record, index) => {
             const originalIndex = data.findIndex(
@@ -337,7 +330,6 @@ const IMUpload = () => {
                 item.Date === record.Date &&
                 item._id,
             );
-            // Ensure State is NOT editable even if selected in editColumns (just in case)
             if (
               key !== "State" &&
               editColumns.includes(key) &&
@@ -362,20 +354,15 @@ const IMUpload = () => {
           },
         };
 
-        // --- SPECIFIC COLUMN CONFIGURATIONS ---
-
-        // Fix StoreName and Date to the left
         if (key === "StoreName" || key === "Date") {
           column.fixed = "left";
         }
 
-        // Configure STATE column: Fix to left, small width
         if (key === "State") {
           column.fixed = "left";
-          column.width = 80; // Set specific small width
+          column.width = 80;
         }
 
-        // Sorters
         if (typeof data[0][key] === "number") {
           column.sorter = (a, b) => (a[key] ?? 0) - (b[key] ?? 0);
         } else if (typeof data[0][key] === "string") {
@@ -386,7 +373,6 @@ const IMUpload = () => {
           column.sorter = (a, b) => (a[key] ?? 0) - (b[key] ?? 0);
         }
 
-        // Filters for StoreName
         if (key === "StoreName") {
           const uniqueStoreNames = [...new Set(data.map((item) => item[key]))]
             .filter((value) => value !== null && value !== undefined)
@@ -398,7 +384,6 @@ const IMUpload = () => {
           column.onFilter = (value, record) => record[key] === value;
         }
 
-        // Filters for Date
         if (key === "Date") {
           const uniqueDates = [...new Set(data.map((item) => item[key]))]
             .filter((value) => value !== null && value !== undefined)
@@ -415,7 +400,6 @@ const IMUpload = () => {
         return column;
       });
 
-      // Update column options for the dropdown (exclude fixed columns from being hidden if you wanted, or just list them all)
       const options = sortedKeys
         .filter((key) => isAdmin || allowedColumnsForNonAdmin.includes(key))
         .map((key) => ({
@@ -556,7 +540,9 @@ const IMUpload = () => {
         }),
       ]);
 
-      if (!dataResponse.data || dataResponse.data.length === 0) {
+      const fetchedRecords = dataResponse.data.data;
+
+      if (!fetchedRecords || fetchedRecords.length === 0) {
         notificationApi.warning({
           message: "Warning",
           description: "No data found for the selected brand and date range.",
@@ -568,39 +554,27 @@ const IMUpload = () => {
         return;
       }
 
-      // --- IMPROVED MAPPING LOGIC ---
-
-      // 1. Build lookup map from BMData (More Robust)
       const storeStateMap = {};
-
       if (mappingResponse.data && mappingResponse.data.storeMappings) {
         mappingResponse.data.storeMappings.forEach((mapping) => {
-          // Check multiple casing variations for StoreNo
           const rawStoreNo =
             mapping.StoreNo || mapping.storeno || mapping.Store_No;
-
           if (rawStoreNo && mapping.State) {
-            // Normalize: Convert to string, trim, and remove ".0" if Excel added decimals
             const cleanKey = String(rawStoreNo).trim().replace(/\.0+$/, "");
             storeStateMap[cleanKey] = mapping.State;
           }
         });
       }
 
-      // 2. Merge State into Data
-      const mergedData = dataResponse.data.map((row) => {
+      const mergedData = fetchedRecords.map((row) => {
         let stateValue = row.State || "";
-
         if (row.StoreName) {
           const storeNameStr = String(row.StoreName);
           const allNumbers = storeNameStr.match(/(\d+)/g);
-
           if (allNumbers) {
             for (const num of allNumbers) {
               const exactKey = num;
-              // Handle "010337" -> "10337"
               const intKey = String(parseInt(num, 10));
-
               if (storeStateMap[exactKey]) {
                 stateValue = storeStateMap[exactKey];
                 break;
@@ -612,11 +586,7 @@ const IMUpload = () => {
             }
           }
         }
-
-        return {
-          ...row,
-          State: stateValue,
-        };
+        return { ...row, State: stateValue };
       });
 
       setData(mergedData);
@@ -624,6 +594,7 @@ const IMUpload = () => {
       setEditFormData({});
       checkTransactions();
     } catch (error) {
+      console.error("Fetch Data Error:", error);
       notificationApi.error({
         message: "Error",
         description: "Error fetching data. Please try again.",
@@ -697,6 +668,12 @@ const IMUpload = () => {
       return;
     }
 
+    // Identify user for logging
+    const loggedInUser =
+      localStorage.getItem("loggedInUser") ||
+      localStorage.getItem("userRole") ||
+      "Unknown";
+
     const updatesToSend = [];
     Object.keys(editRows).forEach((rowIndex) => {
       if (
@@ -736,6 +713,7 @@ const IMUpload = () => {
         {
           updates: updatesToSend,
           brand: selectedBrand,
+          username: loggedInUser, // SENDING USERNAME FOR LOGGING
         },
       );
 
@@ -882,6 +860,47 @@ const IMUpload = () => {
     }
   };
 
+  const handleUpdateFormula = async () => {
+    if (!selectedFormula) return;
+    try {
+      const columnToUpdate =
+        replaceColumn || calculatedColumnName || selectedFormula.column;
+      const response = await axios.put(
+        `${import.meta.env.VITE_API_URL}/api/formulas/${selectedFormula.value}`,
+        {
+          formula: calculatedColumnsFormula,
+          column: columnToUpdate,
+        },
+      );
+      if (response.status === 200) {
+        notificationApi.success({ message: "Formula updated successfully" });
+        setFormulas((prev) =>
+          prev.map((f) =>
+            f.value === selectedFormula.value
+              ? {
+                  ...f,
+                  formula: calculatedColumnsFormula,
+                  column: columnToUpdate,
+                  label: `${calculatedColumnsFormula} → ${columnToUpdate} (${f.selected ? "Active" : "Inactive"})`,
+                }
+              : f,
+          ),
+        );
+        setSelectedFormula((prev) => ({
+          ...prev,
+          formula: calculatedColumnsFormula,
+          column: columnToUpdate,
+        }));
+      }
+    } catch (error) {
+      console.error("Error updating formula:", error);
+      notificationApi.error({
+        message: "Error",
+        description: "Failed to update formula.",
+      });
+    }
+  };
+
   const addCalculatedColumn = async () => {
     if (!selectedBrand) {
       notificationApi.error({
@@ -898,7 +917,12 @@ const IMUpload = () => {
       return;
     }
 
-    if (!replaceColumn && !calculatedColumnName) {
+    const columnToUpdate =
+      replaceColumn ||
+      calculatedColumnName ||
+      (selectedFormula ? selectedFormula.column : null);
+
+    if (!columnToUpdate) {
       notificationApi.error({
         message: "Error",
         description:
@@ -916,9 +940,9 @@ const IMUpload = () => {
       return;
     }
 
-    const columnToUpdate = replaceColumn || calculatedColumnName;
     if (
       !replaceColumn &&
+      !selectedFormula &&
       data.length > 0 &&
       Object.keys(data[0]).includes(columnToUpdate)
     ) {
@@ -974,7 +998,7 @@ const IMUpload = () => {
       return;
     }
 
-    setCalculating(true); // Start loader
+    setCalculating(true);
 
     const updates = data.map((row) => {
       try {
@@ -1013,10 +1037,12 @@ const IMUpload = () => {
           result = expression.replace(/"/g, "");
         } else {
           try {
-            result = evaluate(expression);
+            let rawResult = evaluate(expression);
+            result = Number(parseFloat(rawResult).toFixed(2));
+
             if (isNaN(result) || !isFinite(result)) {
               throw new Error(
-                `Formula evaluation resulted in invalid number: "${result}"`,
+                `Formula evaluation resulted in invalid number: "${rawResult}"`,
               );
             }
           } catch (error) {
@@ -1034,38 +1060,47 @@ const IMUpload = () => {
     });
 
     try {
-      const formulaResponse = await axios.post(
-        `${import.meta.env.VITE_API_URL}/api/formulas`,
-        {
-          formula: calculatedColumnsFormula,
-          column: columnToUpdate,
-          selected: false,
-          brand: selectedBrand,
-        },
-      );
-
-      if (formulaResponse.status === 201) {
-        const newFormula = formulaResponse.data;
-        setFormulas((prev) => [
-          ...prev,
+      if (!selectedFormula) {
+        const formulaResponse = await axios.post(
+          `${import.meta.env.VITE_API_URL}/api/formulas`,
           {
-            label: `${newFormula.formula} → ${newFormula.column} (Inactive)`,
-            value: newFormula._id,
-            formula: newFormula.formula,
-            column: newFormula.column,
-            selected: newFormula.selected,
-            brand: newFormula.brand,
+            formula: calculatedColumnsFormula,
+            column: columnToUpdate,
+            selected: false,
+            brand: selectedBrand,
           },
-        ]);
+        );
+
+        if (formulaResponse.status === 201) {
+          const newFormula = formulaResponse.data;
+          setFormulas((prev) => [
+            ...prev,
+            {
+              label: `${newFormula.formula} → ${newFormula.column} (Inactive)`,
+              value: newFormula._id,
+              formula: newFormula.formula,
+              column: newFormula.column,
+              selected: newFormula.selected,
+              brand: newFormula.brand,
+            },
+          ]);
+        }
       }
+
+      // Identifty user
+      const loggedInUser =
+        localStorage.getItem("loggedInUser") ||
+        localStorage.getItem("userRole") ||
+        "Unknown";
 
       const response = await axios.post(
         `${import.meta.env.VITE_API_URL}/api/data-calculated-column`,
         {
           column: columnToUpdate,
           updates,
-          isNewColumn: !replaceColumn,
+          isNewColumn: !replaceColumn && !selectedFormula,
           brand: selectedBrand,
+          username: loggedInUser, // PASSING USERNAME FOR LOGGING
         },
       );
 
@@ -1093,83 +1128,63 @@ const IMUpload = () => {
           "Error adding calculated column or saving formula. Please try again.",
       });
     } finally {
-      setCalculating(false); // Stop loader
+      setCalculating(false);
     }
   };
 
-  // Modified undo handler (no password)
   const handleUndo = async () => {
-    if (!isAuthenticated) {
-      alert("Please authenticate to perform undo.");
-      return;
-    }
+    if (!isAuthenticated) return alert("Please authenticate.");
+    if (!selectedBrand) return;
 
-    if (!selectedBrand) {
-      notificationApi.error({
-        message: "Error",
-        description: "Please select a brand.",
-      });
-      return;
-    }
+    const loggedInUser = localStorage.getItem("loggedInUser") || "Unknown";
 
     try {
       const response = await axios.post(
         `${import.meta.env.VITE_API_URL}/api/undo`,
-        { brand: selectedBrand },
+        {
+          brand: selectedBrand,
+          username: loggedInUser, // PASSING USERNAME
+        },
       );
 
       if (response.status === 200) {
         notificationApi.success({
-          message: "Success",
-          description: response.data.message,
+          message: "Undo Success",
+          description: "Changes reverted and logged.",
         });
         handleFetchData();
         checkTransactions();
       }
     } catch (error) {
-      console.error("Error performing undo:", error);
-      notificationApi.error({
-        message: "Error",
-        description: error.response?.data?.message || "Failed to perform undo.",
-      });
+      notificationApi.error({ message: "Undo failed" });
     }
   };
 
-  // Modified redo handler (no password)
   const handleRedo = async () => {
-    if (!isAuthenticated) {
-      alert("Please authenticate to perform redo.");
-      return;
-    }
+    if (!isAuthenticated) return alert("Please authenticate.");
+    if (!selectedBrand) return;
 
-    if (!selectedBrand) {
-      notificationApi.error({
-        message: "Error",
-        description: "Please select a brand.",
-      });
-      return;
-    }
+    const loggedInUser = localStorage.getItem("loggedInUser") || "Unknown";
 
     try {
       const response = await axios.post(
         `${import.meta.env.VITE_API_URL}/api/redo`,
-        { brand: selectedBrand },
+        {
+          brand: selectedBrand,
+          username: loggedInUser, // PASSING USERNAME
+        },
       );
 
       if (response.status === 200) {
         notificationApi.success({
-          message: "Success",
-          description: response.data.message,
+          message: "Redo Success",
+          description: "Changes reapplied and logged.",
         });
         handleFetchData();
         checkTransactions();
       }
     } catch (error) {
-      console.error("Error performing redo:", error);
-      notificationApi.error({
-        message: "Error",
-        description: error.response?.data?.message || "Failed to perform redo.",
-      });
+      notificationApi.error({ message: "Redo failed" });
     }
   };
 
@@ -1280,7 +1295,6 @@ const IMUpload = () => {
                         value={calculatedColumnName}
                         onChange={handleCalculatedColumnNameChange}
                         placeholder="Enter name for new column"
-                        disabled={!!selectedFormula}
                       />
                     </Col>
                     <Col span={12}>
@@ -1291,7 +1305,6 @@ const IMUpload = () => {
                         style={{ width: "100%" }}
                         options={columnOptions}
                         allowClear
-                        disabled={!!selectedFormula}
                       />
                     </Col>
                     <Col span={12}>
@@ -1310,29 +1323,44 @@ const IMUpload = () => {
                         onChange={handleCalculatedColumnsFormulaChange}
                         placeholder="Formula (e.g., colA + colB + colC)"
                         rows={4}
-                        disabled={!!selectedFormula}
                       />
                     </Col>
-                    <Col span={24}>
+                    <Col
+                      span={24}
+                      style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}
+                    >
                       <IMButton
                         handleClick={addCalculatedColumn}
                         variant="filled"
                         color="purple"
-                        disabled={!!selectedFormula || calculating}
-                        loading={calculating} // Add loader
+                        disabled={calculating}
+                        loading={calculating}
                       >
-                        Add Calculated Column
+                        {selectedFormula
+                          ? "Apply Formula to Data"
+                          : "Add Calculated Column"}
                       </IMButton>
+
                       {selectedFormula && (
-                        <IMButton
-                          handleClick={toggleFormulaSelection}
-                          variant="outlined"
-                          color={selectedFormula.selected ? "green" : "blue"}
-                          style={{ marginLeft: "8px" }}
-                        >
-                          {selectedFormula.selected ? "Deactivate" : "Activate"}{" "}
-                          Formula
-                        </IMButton>
+                        <>
+                          <IMButton
+                            handleClick={handleUpdateFormula}
+                            variant="filled"
+                            color="orange"
+                          >
+                            Update Formula
+                          </IMButton>
+                          <IMButton
+                            handleClick={toggleFormulaSelection}
+                            variant="outlined"
+                            color={selectedFormula.selected ? "green" : "blue"}
+                          >
+                            {selectedFormula.selected
+                              ? "Deactivate"
+                              : "Activate"}{" "}
+                            Formula
+                          </IMButton>
+                        </>
                       )}
                     </Col>
                   </Row>

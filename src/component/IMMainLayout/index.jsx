@@ -57,6 +57,7 @@ const IMMainLayout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("isAuthenticated");
     localStorage.removeItem("userRole");
+    localStorage.removeItem("loggedInUser");
     navigate("/login");
   };
 
