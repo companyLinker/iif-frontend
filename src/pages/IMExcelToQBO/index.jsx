@@ -558,9 +558,9 @@ const IMExcelToQBO = () => {
       ? transactions[transactions.length - 1].date
       : nowStr;
 
-    const FID = isBofA ? "13540" : "10809";
-    const INTU_BID = isBofA ? "54111" : "10809";
-    const ORG = isBofA ? "BankOfAmerica" : "Citizens";
+    const FID = isBofA ? "11162" : "10809";
+    const INTU_BID = isBofA ? "11162" : "10809";
+    const ORG = isBofA ? "Bank of America" : "Citizens";
     const BANKID = isBofA ? "011000138" : "000000000";
 
     let txnString = "";
