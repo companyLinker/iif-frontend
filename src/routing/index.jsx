@@ -6,7 +6,7 @@ import IMLogin from "../pages/IMLogin";
 import IMMainLayout from "../component/IMMainLayout";
 import IMBankMapping from "../pages/IMBankMapping";
 import IMStoreData from "../pages/IMStoreData";
-import IMExcelToQBO from "../pages/IMExcelToQBO";
+import IMDueToDueMappings from "../pages/IMDueToDueMappings";
 import IMChequeSheetGenerator from "../pages/IMChequeSheetGenerator";
 
 export const router = createBrowserRouter([
@@ -38,8 +38,8 @@ export const router = createBrowserRouter([
         element: <IMStoreData />,
       },
       {
-        path: "/excel-to-qbo",
-        element: <IMExcelToQBO />,
+        path: "/due-to-due-mappings",
+        element: <IMDueToDueMappings />,
       },
       {
         path: "/cheque_sheet-generator",

@@ -36,9 +36,9 @@ const navItems = [
     label: <Link to="/store-names">Store Names</Link>,
   },
   {
-    key: "/excel-to-qbo",
+    key: "/due-to-due-mappings",
     icon: <ToolOutlined />,
-    label: <Link to="/excel-to-qbo">Excel To QBO</Link>,
+    label: <Link to="/due-to-due-mappings">Due to Due Mappings</Link>,
   },
   {
     key: "/cheque_sheet-generator",
@@ -77,6 +77,11 @@ const IMMainLayout = () => {
     // If it's the Cheque Sheet Generator, allow admin and chequesheet_user
     if (item.key === "/cheque_sheet-generator") {
       return userRole === "admin" || userRole === "chequesheet_user";
+    }
+
+    // If it's Due to Due Mappings, allow ONLY admin
+    if (item.key === "/due-to-due-mappings") {
+      return userRole === "admin";
     }
 
     // If it's the chequesheet_user, HIDE all other tools except the Home page
