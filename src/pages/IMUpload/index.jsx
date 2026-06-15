@@ -7,7 +7,7 @@ import { IMCard } from "../../component/IMCard";
 import * as XLSX from "xlsx";
 import moment from "moment";
 import { evaluate } from "mathjs";
-import { Col, Row, Select, Input, notification } from "antd";
+import { Col, Row, Select, Input, notification, Spin } from "antd";
 
 const { TextArea } = Input;
 
@@ -264,6 +264,7 @@ const IMUpload = () => {
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [calculating, setCalculating] = useState(false);
+  const [fetchingData, setFetchingData] = useState(false);
 
   const ADMIN_PASSWORD = `${import.meta.env.VITE_DB_UPDATE_PSSWRD}`;
   const isAdmin = localStorage.getItem("userRole") === "admin";
@@ -609,6 +610,7 @@ const IMUpload = () => {
     const formattedStartDate = startDate.format("MM-DD-YYYY");
     const formattedEndDate = endDate.format("MM-DD-YYYY");
 
+    setFetchingData(true);
     try {
       const [dataResponse, mappingResponse] = await Promise.all([
         axios.post(`${import.meta.env.VITE_API_URL}/api/data`, {
@@ -664,6 +666,8 @@ const IMUpload = () => {
     } catch (error) {
       console.error("Fetch Data Error:", error);
       notificationApi.error({ message: "Error", description: "Error fetching data. Please try again." });
+    } finally {
+      setFetchingData(false);
     }
   }, [selectedBrand, startDate, endDate, notificationApi, checkTransactions]);
 
@@ -882,7 +886,7 @@ const IMUpload = () => {
     }
   };
 
-  // ─── Apply Formula to Data (main function, fully fixed) ───────────────────
+  // ─── Apply Formula to Data (filter-aware, chunked, ultra-fast) ──────────────
   const addCalculatedColumn = async () => {
     if (!selectedBrand) {
       notificationApi.error({ message: "Error", description: "Please select a brand." });
@@ -951,7 +955,28 @@ const IMUpload = () => {
       return;
     }
 
-    if (data.length === 0) {
+    // ── Use filteredData so StoreName (or any) filter is respected ─────────────
+    // filteredData contains rows with _id stripped; we need _id for the update.
+    // Re-join with full data records using a Map for O(1) lookup.
+    const filteredDataWithIds = (() => {
+      if (!filteredData || filteredData.length === 0) return [];
+      // filteredData rows have no _id (stripped in the data effect). Re-map via data.
+      // Build a Map keyed by StoreName+Date since _id is stripped from filteredData.
+      const dataMap = new Map(data.map((r) => [`${r.StoreName}|${r.Date}|${r._id}`, r]));
+      // Since filteredData has no _id, match by checking data rows that appear in filteredData.
+      // Simplest: track which full-data rows pass the current active table filters.
+      // The filteredData state is set by handleTableChange which mirrors the ant-table filter.
+      // The safest cross-reference: match by all non-_id fields using StoreName+Date as key.
+      // For large data, just find which data rows exist in filteredData by StoreName+Date.
+      const filteredKeys = new Set(
+        filteredData.map((r) => `${r.StoreName}|${r.Date}`)
+      );
+      return data.filter((r) => filteredKeys.has(`${r.StoreName}|${r.Date}`));
+    })();
+
+    const rowsToProcess = filteredDataWithIds.length > 0 ? filteredDataWithIds : data;
+
+    if (rowsToProcess.length === 0) {
       notificationApi.error({
         message: "Error",
         description: "No data loaded. Please fetch data before applying a formula.",
@@ -961,21 +986,23 @@ const IMUpload = () => {
 
     setCalculating(true);
 
-    // ── Pre-compile formula ONCE (tokenize + sort columns once for all rows) ──
-    // This avoids re-sorting the column list and re-tokenizing on every row.
-    // compileFormula() returns an execute(colValues) function that is ~10-50x
-    // faster per row than calling evaluateFormula() directly.
+    // ── Pre-compile formula ONCE — avoids re-tokenizing on every row ────────────
     const { formulaCols, execute } = compileFormula(calculatedColumnsFormula, availableCols);
 
-    // ── Compute all row results in one synchronous pass (off the microtask queue)
-    // We use a Promise + setTimeout(0) so the React loading state renders BEFORE
-    // the CPU-heavy loop blocks the JS thread.
-    const updates = await new Promise((resolve) => {
-      setTimeout(() => {
-        const results = [];
-        for (const row of data) {
+    // ── Chunked async calculation so the browser stays responsive ───────────────
+    // Process rows in 5000-row chunks with a yielding setTimeout between each.
+    // This keeps the UI responsive even for 100k+ rows and lets React render
+    // the Calculating... overlay before the heavy CPU work starts.
+    const CHUNK_SIZE = 5000;
+    const allUpdates = [];
+
+    await new Promise((resolve) => {
+      let offset = 0;
+
+      const processChunk = () => {
+        const chunk = rowsToProcess.slice(offset, offset + CHUNK_SIZE);
+        for (const row of chunk) {
           try {
-            // Build colValues for this row (only the columns used in the formula)
             const colValues = {};
             for (const col of formulaCols) {
               let val = row[col];
@@ -989,14 +1016,22 @@ const IMUpload = () => {
               }
               colValues[col] = val;
             }
-            results.push({ _id: row._id, value: execute(colValues) });
+            allUpdates.push({ _id: row._id, value: execute(colValues) });
           } catch (err) {
             console.warn(`Row ${row._id}: ${err.message}`);
-            results.push({ _id: row._id, value: 0 });
+            allUpdates.push({ _id: row._id, value: 0 });
           }
         }
-        resolve(results);
-      }, 0);
+        offset += CHUNK_SIZE;
+        if (offset < rowsToProcess.length) {
+          // Yield to the browser between chunks so UI stays live
+          setTimeout(processChunk, 0);
+        } else {
+          resolve();
+        }
+      };
+
+      setTimeout(processChunk, 0);
     });
 
     try {
@@ -1026,23 +1061,41 @@ const IMUpload = () => {
 
       const loggedInUser = localStorage.getItem("loggedInUser") || localStorage.getItem("userRole") || "Unknown";
 
-      const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/data-calculated-column`, {
-        column: columnToUpdate,
-        updates,
-        isNewColumn: !replaceColumn && !selectedFormula,
-        brand: selectedBrand,
-        username: loggedInUser,
-      });
+      // ── Send updates in batches of 5000 to avoid payload-too-large errors ──────
+      // Even though the server now accepts 100mb, batching is good practice and
+      // keeps individual requests fast. Batches run sequentially to preserve order.
+      const BATCH_SIZE = 5000;
+      let totalModified = 0;
+      let isNewColumn = !replaceColumn && !selectedFormula;
 
-      if (response.status === 200) {
-        notificationApi.success({ message: "Success", description: response.data.message });
-        setCalculatedColumnName("");
-        setCalculatedColumnsFormula("");
-        setCalculatedSelectedColumns([]);
-        setReplaceColumn(null);
-        handleFetchData();
-        checkTransactions();
+      for (let i = 0; i < allUpdates.length; i += BATCH_SIZE) {
+        const batch = allUpdates.slice(i, i + BATCH_SIZE);
+        const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/data-calculated-column`, {
+          column: columnToUpdate,
+          updates: batch,
+          isNewColumn: isNewColumn && i === 0, // only mark new column on first batch
+          brand: selectedBrand,
+          username: loggedInUser,
+        });
+        if (response.status === 200) {
+          totalModified += response.data.modifiedCount || 0;
+        }
       }
+
+      notificationApi.success({
+        message: "Success",
+        description: `Column '${columnToUpdate}' updated for ${totalModified} records.${
+          filteredDataWithIds.length > 0 && filteredDataWithIds.length < data.length
+            ? ` (Applied to ${filteredDataWithIds.length} filtered rows only)`
+            : ""
+        }`,
+      });
+      setCalculatedColumnName("");
+      setCalculatedColumnsFormula("");
+      setCalculatedSelectedColumns([]);
+      setReplaceColumn(null);
+      handleFetchData();
+      checkTransactions();
     } catch (error) {
       console.error("Error adding calculated column or saving formula:", error.response?.data || error);
       notificationApi.error({
@@ -1267,7 +1320,33 @@ const IMUpload = () => {
             )}
             <Col span={24}>
               <IMCard title="DCR">
-                {columns.length > 0 && data.length > 0 ? (
+                {/* Overlay blocker while calculating formula */}
+                {calculating && (
+                  <div
+                    style={{
+                      position: "fixed",
+                      inset: 0,
+                      zIndex: 9999,
+                      background: "rgba(0,0,0,0.45)",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 16,
+                    }}
+                  >
+                    <Spin size="large" />
+                    <span style={{ color: "#fff", fontSize: 18, fontWeight: 600 }}>
+                      Calculating &amp; applying formula… please wait
+                    </span>
+                  </div>
+                )}
+                {fetchingData ? (
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "48px 0", gap: 16 }}>
+                    <Spin size="large" />
+                    <span style={{ color: "#888", fontSize: 16 }}>Fetching data, please wait…</span>
+                  </div>
+                ) : columns.length > 0 && data.length > 0 ? (
                   <IMTable
                     columns={columns}
                     dataSource={data}
