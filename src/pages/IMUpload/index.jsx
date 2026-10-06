@@ -507,7 +507,7 @@ const IMUpload = () => {
       };
 
       if (key === "StoreName" || key === "Date") column.fixed = "left";
-      if (key === "State") { column.fixed = "left"; column.width = 80; }
+      if (key === "State") { column.fixed = "left"; column.width = 100; }
 
       if (typeof data[0][key] === "number") {
         column.sorter = (a, b) => (a[key] ?? 0) - (b[key] ?? 0);
@@ -522,6 +522,15 @@ const IMUpload = () => {
           .filter((v) => v !== null && v !== undefined)
           .sort();
         column.filters = uniqueStoreNames.map((name) => ({ text: name, value: name }));
+        column.onFilter = (value, record) => record[key] === value;
+      }
+
+      if (key === "State") {
+        const uniqueStates = [...new Set(data.map((item) => item[key]))]
+          .filter((v) => v !== null && v !== undefined && v !== "")
+          .sort();
+        column.filters = uniqueStates.map((state) => ({ text: state, value: state }));
+        column.filterSearch = true;
         column.onFilter = (value, record) => record[key] === value;
       }
 
