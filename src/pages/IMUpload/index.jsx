@@ -243,6 +243,7 @@ const IMUpload = () => {
   const [uploading, setUploading] = useState(false);
   const [data, setData] = useState([]);
   const [filteredData, setFilteredData] = useState([]);
+  const [tableFilters, setTableFilters] = useState({});
   const [startDate, setStartDate] = useState(null);
   const [endDate, setEndDate] = useState(null);
   // columnOptions is derived from data — no useState needed, prevents infinite loop
@@ -518,19 +519,29 @@ const IMUpload = () => {
       }
 
       if (key === "StoreName") {
-        const uniqueStoreNames = [...new Set(data.map((item) => item[key]))]
+        const selStates = tableFilters.State || [];
+        const storeSource = selStates.length
+          ? data.filter((item) => selStates.includes(item.State))
+          : data;
+        const uniqueStoreNames = [...new Set(storeSource.map((item) => item[key]))]
           .filter((v) => v !== null && v !== undefined)
           .sort();
         column.filters = uniqueStoreNames.map((name) => ({ text: name, value: name }));
+        column.filteredValue = tableFilters.StoreName?.length ? tableFilters.StoreName : null;
         column.onFilter = (value, record) => record[key] === value;
       }
 
       if (key === "State") {
-        const uniqueStates = [...new Set(data.map((item) => item[key]))]
+        const selStores = tableFilters.StoreName || [];
+        const stateSource = selStores.length
+          ? data.filter((item) => selStores.includes(item.StoreName))
+          : data;
+        const uniqueStates = [...new Set(stateSource.map((item) => item[key]))]
           .filter((v) => v !== null && v !== undefined && v !== "")
           .sort();
         column.filters = uniqueStates.map((state) => ({ text: state, value: state }));
         column.filterSearch = true;
+        column.filteredValue = tableFilters.State?.length ? tableFilters.State : null;
         column.onFilter = (value, record) => record[key] === value;
       }
 
@@ -544,7 +555,7 @@ const IMUpload = () => {
 
       return column;
     });
-  }, [data, isAuthenticated, editColumns, editRows, editFormData, updateEditFormData, isAdmin]);
+  }, [data, isAuthenticated, editColumns, editRows, editFormData, updateEditFormData, isAdmin, tableFilters]);
 
   // ─── Upload ───────────────────────────────────────────────────────────────
   const handleUpload = async () => {
@@ -703,7 +714,29 @@ const IMUpload = () => {
   };
 
   const handleTableChange = (pagination, filters, sorter, extra) => {
-    setFilteredData(extra.currentDataSource || []);
+    // Keep State and StoreName filters co-related: drop selections that no longer
+    // match the other filter.
+    const states = filters.State || [];
+    const stores = filters.StoreName || [];
+    const validStores = states.length
+      ? new Set(data.filter((r) => states.includes(r.State)).map((r) => r.StoreName))
+      : null;
+    const validStates = stores.length
+      ? new Set(data.filter((r) => stores.includes(r.StoreName)).map((r) => r.State))
+      : null;
+    const nextStores = validStores ? stores.filter((s) => validStores.has(s)) : stores;
+    const nextStates = validStates ? states.filter((s) => validStates.has(s)) : states;
+    setTableFilters({ ...filters, StoreName: nextStores, State: nextStates });
+
+    let source = extra.currentDataSource || [];
+    if (nextStores.length !== stores.length || nextStates.length !== states.length) {
+      source = source.filter(
+        (r) =>
+          (!nextStores.length || nextStores.includes(r.StoreName)) &&
+          (!nextStates.length || nextStates.includes(r.State))
+      );
+    }
+    setFilteredData(source);
     setPageSize(pagination.pageSize);
   };
 
