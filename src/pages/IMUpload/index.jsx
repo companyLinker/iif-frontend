@@ -576,11 +576,13 @@ const IMUpload = () => {
     // Builds the message from what the server actually stored, so a result of
     // "0 inserted" is never shown as a plain success.
     const describe = (data) => {
-      const { insertedCount = 0, duplicateCount = 0, updatedCount = 0, skippedCount = 0, sheetCount = 0, fileCount = 0, errors = [] } = data;
+      const { insertedCount = 0, duplicateCount = 0, updatedCount = 0, skippedCount = 0, sheetCount = 0, fileCount = 0, errors = [], unresolvedStoreIds = [], storeNamesResolved = 0, storeIdColumn = null } = data;
       let message = `Records inserted: ${insertedCount} from ${sheetCount} sheet(s) across ${fileCount} file(s).`;
       if (duplicateCount > 0) message += ` Skipped ${duplicateCount} duplicate record(s).`;
       if (updatedCount > 0) message += ` Filled missing values in ${updatedCount} existing record(s).`;
       if (skippedCount > 0) message += ` ${skippedCount} row(s) were not stored (missing StoreName or valid Date).`;
+      if (storeNamesResolved > 0) message += ` Store names were looked up from "${storeIdColumn}" for ${storeNamesResolved} row(s).`;
+      if (unresolvedStoreIds.length > 0) message += ` No store name found in Store Data for: ${unresolvedStoreIds.join(", ")} - saved under that id; add the store in Store Data and upload again to rename them.`;
       if (errors.length > 0) message += ` Problems: ${errors.join(" | ")}`;
       return message;
     };
@@ -591,7 +593,7 @@ const IMUpload = () => {
       });
       const data = response.data || {};
       const description = describe(data);
-      if (data.insertedCount > 0 && !(data.skippedCount > 0) && !(data.errors?.length > 0)) {
+      if (data.insertedCount > 0 && !(data.skippedCount > 0) && !(data.errors?.length > 0) && !(data.unresolvedStoreIds?.length > 0)) {
         notificationApi.success({ message: "Success", description: `Upload completed! ${description}`, duration: 8 });
       } else if (data.insertedCount > 0) {
         notificationApi.warning({ message: "Uploaded with warnings", description, duration: 0 });
