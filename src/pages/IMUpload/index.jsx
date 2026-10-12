@@ -573,20 +573,37 @@ const IMUpload = () => {
     files.forEach((file) => formData.append("files", file));
     formData.append("brand", selectedBrand);
 
+    // Builds the message from what the server actually stored, so a result of
+    // "0 inserted" is never shown as a plain success.
+    const describe = (data) => {
+      const { insertedCount = 0, duplicateCount = 0, updatedCount = 0, skippedCount = 0, sheetCount = 0, fileCount = 0, errors = [] } = data;
+      let message = `Records inserted: ${insertedCount} from ${sheetCount} sheet(s) across ${fileCount} file(s).`;
+      if (duplicateCount > 0) message += ` Skipped ${duplicateCount} duplicate record(s).`;
+      if (updatedCount > 0) message += ` Filled missing values in ${updatedCount} existing record(s).`;
+      if (skippedCount > 0) message += ` ${skippedCount} row(s) were not stored (missing StoreName or valid Date).`;
+      if (errors.length > 0) message += ` Problems: ${errors.join(" | ")}`;
+      return message;
+    };
+
     try {
       const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/upload`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      if (response.status === 200) {
-        const { insertedCount, duplicateCount, sheetCount, fileCount } = response.data;
-        let message = `Upload completed! Total records inserted: ${insertedCount} from ${sheetCount} sheets across ${fileCount} files.`;
-        if (duplicateCount > 0) message += ` Skipped ${duplicateCount} duplicate records.`;
-        notificationApi.success({ message: "Success", description: message });
+      const data = response.data || {};
+      const description = describe(data);
+      if (data.insertedCount > 0 && !(data.skippedCount > 0) && !(data.errors?.length > 0)) {
+        notificationApi.success({ message: "Success", description: `Upload completed! ${description}`, duration: 8 });
+      } else if (data.insertedCount > 0) {
+        notificationApi.warning({ message: "Uploaded with warnings", description, duration: 0 });
       } else {
-        notificationApi.error({ message: "Error", description: "Error uploading files. Please try again." });
+        notificationApi.info({ message: data.message || "No new records", description, duration: 0 });
       }
-    } catch {
-      notificationApi.error({ message: "Error", description: "Error uploading files. Please try again." });
+    } catch (error) {
+      const data = error.response?.data;
+      const description = data?.insertedCount !== undefined
+        ? `${data.message}. ${describe(data)}`
+        : data?.message || "Error uploading files. Please try again.";
+      notificationApi.error({ message: "Upload failed", description, duration: 0 });
     }
 
     setUploading(false);
