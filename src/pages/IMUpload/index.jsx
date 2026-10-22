@@ -347,16 +347,22 @@ const IMUpload = () => {
   useEffect(() => {
     const fetchBrandsAndFormulas = async () => {
       try {
-        const [brandResponse, formulaResponse] = await Promise.all([
+        // allSettled: a failing formulas request must not hide the brand list
+        const [brandResult, formulaResult] = await Promise.allSettled([
           axios.get(`${import.meta.env.VITE_API_URL}/api/brands`),
           axios.get(`${import.meta.env.VITE_API_URL}/api/formulas`),
         ]);
 
-        const brands = brandResponse.data.map((brand) => ({
-          label: brand,
-          value: brand,
-        }));
-        setBrandOptions(brands);
+        if (brandResult.status === "fulfilled") {
+          setBrandOptions(
+            brandResult.value.data.map((brand) => ({ label: brand, value: brand })),
+          );
+        }
+        if (brandResult.status === "rejected" || formulaResult.status === "rejected") {
+          const reason = (brandResult.status === "rejected" ? brandResult : formulaResult).reason;
+          throw reason;
+        }
+        const formulaResponse = formulaResult.value;
 
         const formulaOptions = formulaResponse.data.map((formula) => ({
           label: `${formula.formula} → ${formula.column} (${formula.selected ? "Active" : "Inactive"})`,

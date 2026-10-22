@@ -648,7 +648,7 @@ const IMHome = () => {
     try {
       const [filterResponse, storeResponse] = await Promise.all([
         axios.get(`${import.meta.env.VITE_API_URL}/api/filter-options`),
-        axios.get(`${import.meta.env.VITE_API_URL}/api/store-data`),
+        axios.post(`${import.meta.env.VITE_API_URL}/api/store-data`, {}),
       ]);
 
       const {
@@ -1055,8 +1055,12 @@ const IMHome = () => {
       })
       .then((response) => {
         setFetchingData(false);
-        if (response.data && response.data.length > 0) {
-          const dataWithoutId = response.data.map((item) => {
+        // the API answers { success, count, data: [...] }
+        const fetchedRows = Array.isArray(response.data)
+          ? response.data
+          : response.data?.data;
+        if (fetchedRows && fetchedRows.length > 0) {
+          const dataWithoutId = fetchedRows.map((item) => {
             const { _id, ...rest } = item;
             return rest;
           });
