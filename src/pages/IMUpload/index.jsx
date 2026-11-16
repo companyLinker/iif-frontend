@@ -582,13 +582,17 @@ const IMUpload = () => {
     // Builds the message from what the server actually stored, so a result of
     // "0 inserted" is never shown as a plain success.
     const describe = (data) => {
-      const { insertedCount = 0, duplicateCount = 0, updatedCount = 0, skippedCount = 0, sheetCount = 0, fileCount = 0, errors = [], unresolvedStoreIds = [], storeNamesResolved = 0, storeIdColumn = null } = data;
+      const { insertedCount = 0, duplicateCount = 0, updatedCount = 0, skippedCount = 0, sheetCount = 0, fileCount = 0, errors = [], unresolvedStoreIds = [], storeNamesResolved = 0, storeIdColumn = null, converted = [], storeColumnGuess = null } = data;
       let message = `Records inserted: ${insertedCount} from ${sheetCount} sheet(s) across ${fileCount} file(s).`;
       if (duplicateCount > 0) message += ` Skipped ${duplicateCount} duplicate record(s).`;
       if (updatedCount > 0) message += ` Filled missing values in ${updatedCount} existing record(s).`;
       if (skippedCount > 0) message += ` ${skippedCount} row(s) were not stored (missing StoreName or valid Date).`;
       if (storeNamesResolved > 0) message += ` Store names were looked up from "${storeIdColumn}" for ${storeNamesResolved} row(s).`;
       if (unresolvedStoreIds.length > 0) message += ` No store name found in Store Data for: ${unresolvedStoreIds.join(", ")} - saved under that id; add the store in Store Data and upload again to rename them.`;
+      converted.forEach((c) => {
+        message += ` ${c.file}: report converted to ${c.days} daily row(s) (${c.from} to ${c.to}) for store ${c.store}${c.mode === "transposed" ? " - no saved layout matched, so every line of the report was stored as its own column" : ""}.`;
+      });
+      if (storeColumnGuess) message += ` No column was named as the store, so "${storeColumnGuess}" was used as the store - please check the store names.`;
       if (errors.length > 0) message += ` Problems: ${errors.join(" | ")}`;
       return message;
     };
@@ -599,7 +603,7 @@ const IMUpload = () => {
       });
       const data = response.data || {};
       const description = describe(data);
-      if (data.insertedCount > 0 && !(data.skippedCount > 0) && !(data.errors?.length > 0) && !(data.unresolvedStoreIds?.length > 0)) {
+      if (data.insertedCount > 0 && !(data.skippedCount > 0) && !(data.errors?.length > 0) && !(data.unresolvedStoreIds?.length > 0) && !data.storeColumnGuess && !(data.converted || []).some((c) => c.mode === "transposed" || !c.storeResolved)) {
         notificationApi.success({ message: "Success", description: `Upload completed! ${description}`, duration: 8 });
       } else if (data.insertedCount > 0) {
         notificationApi.warning({ message: "Uploaded with warnings", description, duration: 0 });
