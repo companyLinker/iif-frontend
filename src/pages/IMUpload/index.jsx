@@ -1242,7 +1242,7 @@ const IMUpload = () => {
                     <input
                       type="file"
                       onChange={handleFileChange}
-                      accept=".xlsx,.xls"
+                      accept=".xlsx,.xls,.csv"
                       multiple
                     />
                     <IMButton
